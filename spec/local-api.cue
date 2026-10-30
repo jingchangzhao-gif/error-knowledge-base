@@ -8,24 +8,27 @@ package spec
 // operation versions carried inside every payload.
 #EnvelopeVersion: "v1"
 
-#Operation: "lookup" | "search" | "record" | "feedback" | "list" | "stats" | "capture" | "record_solution" | "set_status" | "get_issue" | "set_solution_status" | "delete_solution"
+#Operation: "lookup" | "search" | "record" | "feedback" | "list" | "stats" | "capture" | "record_solution" | "set_status" | "get_issue" | "set_solution_status" | "delete_solution" | "prevention_add" | "prevention_verify" | "prevention_activate" | "prevention_list" | "prevention_get" | "prevention_stats"
 
 // #ToolRequest and #ToolResponse are unions of the MCP payload definitions.
-// "capture" is the connector SDK envelope from spec/connector.cue: it is not an
-// MCP tool (MCP must never be passive capture), only a local API operation.
+// "capture" and prevention verify/activate are local-only operations, not MCP tools.
 #ToolRequest:
 	#LookupRequest | #SearchRequest | #RecordRequest |
 	#FeedbackRequest | #ListRequest | #StatsRequest |
 	#RecordSolutionRequest | #SetStatusRequest |
 	#ConnectorCaptureRequest |
-	#GetIssueRequest | #SetSolutionStatusRequest | #DeleteSolutionRequest
+	#GetIssueRequest | #SetSolutionStatusRequest | #DeleteSolutionRequest |
+	#PreventionAddRequest | #PreventionVerifyRequest | #PreventionActivateRequest |
+	#PreventionListRequest | #PreventionGetRequest | #PreventionStatsRequest
 
 #ToolResponse:
 	#LookupResponse | #SearchResponse | #RecordResponse |
 	#FeedbackResponse | #ListResponse | #StatsResponse |
 	#RecordSolutionResponse | #SetStatusResponse |
 	#ConnectorCaptureResponse |
-	#GetIssueResponse | #SetSolutionStatusResponse | #DeleteSolutionResponse
+	#GetIssueResponse | #SetSolutionStatusResponse | #DeleteSolutionResponse |
+	#PreventionAddResponse | #PreventionVerifyResponse | #PreventionActivateResponse |
+	#PreventionListResponse | #PreventionGetResponse | #PreventionStatsResponse
 
 #ErrorCode:
 	"invalid_request" | "not_found" | "unavailable" | "conflict" | "internal"

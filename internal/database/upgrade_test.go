@@ -163,8 +163,8 @@ func TestUpgradeFrom0007KeepsTheData(t *testing.T) {
 
 	before := tableCounts(t, conn)
 	applied := migrate(t, conn, migrationsDir())
-	if !reflect.DeepEqual(applied, []string{"0008"}) {
-		t.Fatalf("applied = %v, want only 0008", applied)
+	if !reflect.DeepEqual(applied, []string{"0008", "0009"}) {
+		t.Fatalf("applied = %v, want 0008 and 0009", applied)
 	}
 	if !columnExists(t, conn, "retrievals", "duration_ms") {
 		t.Fatal("0008 did not add retrievals.duration_ms")
@@ -172,8 +172,13 @@ func TestUpgradeFrom0007KeepsTheData(t *testing.T) {
 	if after := tableCounts(t, conn); !reflect.DeepEqual(before, after) {
 		t.Fatalf("row counts changed across the upgrade; before %v, after %v", before, after)
 	}
-	if got := ledgerVersions(t, conn); len(got) != 8 || got[7] != "0008" {
-		t.Fatalf("ledger after the upgrade = %v, want 0001..0008", got)
+	for _, table := range []string{"prevention_artifacts", "prevention_artifact_versions", "issue_preventions", "prevention_verifications"} {
+		if got := rowCount(t, conn, table); got != 0 {
+			t.Fatalf("%s has %d rows after upgrade, want 0", table, got)
+		}
+	}
+	if got := ledgerVersions(t, conn); len(got) != 9 || got[8] != "0009" {
+		t.Fatalf("ledger after the upgrade = %v, want 0001..0009", got)
 	}
 	if got := storedHeadline(t, conn, event.EventID); got != event.Headline {
 		t.Fatalf("stored headline = %q, want %q", got, event.Headline)
@@ -264,7 +269,7 @@ func TestUpgradeRollsBackAFailedMigration(t *testing.T) {
 			t.Fatalf("copy migration %s: %v", entry.Name(), err)
 		}
 	}
-	broken := "0009_broken.sql"
+	broken := "0010_broken.sql"
 	brokenBody := "create table broken_probe (id integer);\ndo $$ begin raise exception 'the upgrade fails on purpose'; end $$;\n"
 	if err := os.WriteFile(filepath.Join(dir, broken), []byte(brokenBody), 0o600); err != nil {
 		t.Fatalf("write the failing migration: %v", err)
@@ -274,29 +279,32 @@ func TestUpgradeRollsBackAFailedMigration(t *testing.T) {
 	if err == nil {
 		t.Fatal("the failing migration was reported as successful")
 	}
-	if !strings.Contains(err.Error(), "0009") {
+	if !strings.Contains(err.Error(), "0010") {
 		t.Fatalf("error %q does not name the failing migration", err)
 	}
 	if tableExists(t, conn, "broken_probe") {
 		t.Fatal("a table created by the failed migration survived; the transaction was not rolled back")
 	}
-	if got := ledgerVersions(t, conn); len(got) != 8 || got[7] != "0008" {
-		t.Fatalf("ledger after the failed migration = %v, want 0001..0008", got)
+	if !tableExists(t, conn, "prevention_artifacts") {
+		t.Fatal("successful 0009 was rolled back with failed 0010")
+	}
+	if got := ledgerVersions(t, conn); len(got) != 9 || got[8] != "0009" {
+		t.Fatalf("ledger after the failed migration = %v, want 0001..0009", got)
 	}
 	if after := tableCounts(t, conn); !reflect.DeepEqual(before, after) {
 		t.Fatalf("row counts changed across the failed migration; before %v, after %v", before, after)
 	}
 
-	// Removing the broken file and re-running must apply nothing: 0008 is
-	// recorded exactly once and the retry does not double-apply it.
+	// Removing the broken file and re-running must apply nothing: 0008 and 0009
+	// are recorded exactly once and the retry does not double-apply them.
 	if err := os.Remove(filepath.Join(dir, broken)); err != nil {
 		t.Fatalf("remove the failing migration: %v", err)
 	}
 	if applied := migrate(t, conn, dir); len(applied) != 0 {
 		t.Fatalf("retry applied %v, want nothing", applied)
 	}
-	if got := ledgerVersions(t, conn); len(got) != 8 {
-		t.Fatalf("ledger after the retry = %v, want 8 rows", got)
+	if got := ledgerVersions(t, conn); len(got) != 9 {
+		t.Fatalf("ledger after the retry = %v, want 9 rows", got)
 	}
 }
 

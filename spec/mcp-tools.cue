@@ -306,5 +306,6 @@ import "list"
 	output:      #SetStatusResponse
 }
 
-// #Tools lists the eight descriptors, so a missing operation fails cue vet.
-#Tools: [#LookupTool, #SearchTool, #RecordTool, #FeedbackTool, #ListTool, #StatsTool, #RecordSolutionTool, #SetStatusTool]
+// #Tools lists every descriptor. Prevention verification and activation are
+// deliberately absent: only the local CLI may execute commands or activate.
+#Tools: [#LookupTool, #SearchTool, #RecordTool, #FeedbackTool, #ListTool, #StatsTool, #RecordSolutionTool, #SetStatusTool, #PreventionRegisterTool, #PreventionListTool, #PreventionGetTool]

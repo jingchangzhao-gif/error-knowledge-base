@@ -16,18 +16,24 @@ import (
 const PipeEnvelopeVersion = "v1"
 
 var validOperations = map[string]bool{
-	OperationLookup:            true,
-	OperationSearch:            true,
-	OperationRecord:            true,
-	OperationFeedback:          true,
-	OperationList:              true,
-	OperationStats:             true,
-	OperationCapture:           true,
-	OperationRecordSolution:    true,
-	OperationSetStatus:         true,
-	OperationGetIssue:          true,
-	OperationSetSolutionStatus: true,
-	OperationDeleteSolution:    true,
+	OperationLookup:             true,
+	OperationSearch:             true,
+	OperationRecord:             true,
+	OperationFeedback:           true,
+	OperationList:               true,
+	OperationStats:              true,
+	OperationCapture:            true,
+	OperationRecordSolution:     true,
+	OperationSetStatus:          true,
+	OperationGetIssue:           true,
+	OperationSetSolutionStatus:  true,
+	OperationDeleteSolution:     true,
+	OperationPreventionAdd:      true,
+	OperationPreventionVerify:   true,
+	OperationPreventionActivate: true,
+	OperationPreventionList:     true,
+	OperationPreventionGet:      true,
+	OperationPreventionStats:    true,
 }
 
 var validErrorCodes = map[string]bool{
@@ -217,6 +223,42 @@ func validatePayload(operation string, payload []byte) error {
 			return fmt.Errorf("delete_solution payload: %w", err)
 		}
 		return decoded.Validate()
+	case OperationPreventionAdd:
+		var decoded PreventionAddRequest
+		if err := decodeStrict(payload, &decoded); err != nil {
+			return fmt.Errorf("prevention_add payload: %w", err)
+		}
+		return decoded.Validate()
+	case OperationPreventionVerify:
+		var decoded PreventionVerifyRequest
+		if err := decodeStrict(payload, &decoded); err != nil {
+			return fmt.Errorf("prevention_verify payload: %w", err)
+		}
+		return decoded.Validate()
+	case OperationPreventionActivate:
+		var decoded PreventionActivateRequest
+		if err := decodeStrict(payload, &decoded); err != nil {
+			return fmt.Errorf("prevention_activate payload: %w", err)
+		}
+		return decoded.Validate()
+	case OperationPreventionList:
+		var decoded PreventionListRequest
+		if err := decodeStrict(payload, &decoded); err != nil {
+			return fmt.Errorf("prevention_list payload: %w", err)
+		}
+		return decoded.Validate()
+	case OperationPreventionGet:
+		var decoded PreventionGetRequest
+		if err := decodeStrict(payload, &decoded); err != nil {
+			return fmt.Errorf("prevention_get payload: %w", err)
+		}
+		return decoded.Validate()
+	case OperationPreventionStats:
+		var decoded PreventionStatsRequest
+		if err := decodeStrict(payload, &decoded); err != nil {
+			return fmt.Errorf("prevention_stats payload: %w", err)
+		}
+		return decoded.Validate()
 	default:
 		return fmt.Errorf("operation: unknown %q", operation)
 	}
@@ -296,6 +338,42 @@ func validateResult(operation string, payload []byte) error {
 		var decoded DeleteSolutionResponse
 		if err := decodeStrict(payload, &decoded); err != nil {
 			return fmt.Errorf("delete_solution result: %w", err)
+		}
+		return decoded.Validate()
+	case OperationPreventionAdd:
+		var decoded PreventionAddResponse
+		if err := decodeStrict(payload, &decoded); err != nil {
+			return fmt.Errorf("prevention_add result: %w", err)
+		}
+		return decoded.Validate()
+	case OperationPreventionVerify:
+		var decoded PreventionVerifyResponse
+		if err := decodeStrict(payload, &decoded); err != nil {
+			return fmt.Errorf("prevention_verify result: %w", err)
+		}
+		return decoded.Validate()
+	case OperationPreventionActivate:
+		var decoded PreventionActivateResponse
+		if err := decodeStrict(payload, &decoded); err != nil {
+			return fmt.Errorf("prevention_activate result: %w", err)
+		}
+		return decoded.Validate()
+	case OperationPreventionList:
+		var decoded PreventionListResponse
+		if err := decodeStrict(payload, &decoded); err != nil {
+			return fmt.Errorf("prevention_list result: %w", err)
+		}
+		return decoded.Validate()
+	case OperationPreventionGet:
+		var decoded PreventionGetResponse
+		if err := decodeStrict(payload, &decoded); err != nil {
+			return fmt.Errorf("prevention_get result: %w", err)
+		}
+		return decoded.Validate()
+	case OperationPreventionStats:
+		var decoded PreventionStatsResponse
+		if err := decodeStrict(payload, &decoded); err != nil {
+			return fmt.Errorf("prevention_stats result: %w", err)
 		}
 		return decoded.Validate()
 	default:

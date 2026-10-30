@@ -186,7 +186,7 @@ func TestDBMigrateCreatesTheSchema(t *testing.T) {
 	if err := json.Unmarshal(out.Bytes(), &report); err != nil {
 		t.Fatalf("status json: %v (%q)", err, out.String())
 	}
-	if !report.UpToDate || len(report.Applied) != 8 || len(report.Pending) != 0 {
+	if !report.UpToDate || len(report.Applied) != 9 || len(report.Pending) != 0 {
 		t.Fatalf("status report = %+v", report)
 	}
 	if strings.Contains(report.Target, "secret") {
