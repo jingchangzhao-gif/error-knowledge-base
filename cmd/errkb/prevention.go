@@ -307,6 +307,7 @@ func renderPreventionVerification(env *cliEnv, verification contract.PreventionV
 		fmt.Fprintln(env.stdout, "   exit=none")
 	}
 	if verification.Evidence != "" {
-		fmt.Fprintf(env.stdout, "   evidence:\n%s\n", verification.Evidence)
+		fmt.Fprintln(env.stdout, "   evidence:")
+		fmt.Fprintf(env.stdout, "%s\n", verification.Evidence)
 	}
 }
