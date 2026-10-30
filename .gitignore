@@ -1,3 +1,6 @@
+# Local isolated worktrees
+.worktrees/
+
 # Dependencies and build output
 node_modules/
 *.tsbuildinfo
