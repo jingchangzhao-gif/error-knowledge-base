@@ -99,7 +99,7 @@ func TestPreventionContracts(t *testing.T) {
 		}
 	}
 
-	badPaths := []string{"", "/tests/a.go", `C:\tests\a.go`, "C:/tests/a.go", `tests\a.go`, "tests//a.go", "./a.go", "tests/../a.go", ".git/config", "tests/.git/config"}
+	badPaths := []string{"", "/tests/a.go", "C:" + `\tests\a.go`, "C:/tests/a.go", `tests\a.go`, "tests//a.go", "./a.go", "tests/../a.go", ".git/config", "tests/.git/config"}
 	for _, path := range badPaths {
 		r := validPreventionAdd()
 		r.ArtifactPath = path
@@ -119,7 +119,7 @@ func TestPreventionContracts(t *testing.T) {
 	invalid := []preventionValidator{
 		PreventionAddRequest{SchemaVersion: "v2", IssueID: testIssueID, Kind: "intent", Title: "x", ArtifactPath: "intent.md", ContentSHA256: testContentHash},
 		PreventionAddRequest{SchemaVersion: PreventionSchemaVersion, IssueID: testIssueID, Kind: "unknown", Title: "x", ArtifactPath: "intent.md", ContentSHA256: testContentHash},
-		PreventionAddRequest{SchemaVersion: PreventionSchemaVersion, IssueID: testIssueID, Kind: "intent", Title: "sk-abcdefghijklmnop", ArtifactPath: "intent.md", ContentSHA256: testContentHash},
+		PreventionAddRequest{SchemaVersion: PreventionSchemaVersion, IssueID: testIssueID, Kind: "intent", Title: "sk-" + strings.Repeat("a", 16), ArtifactPath: "intent.md", ContentSHA256: testContentHash},
 		PreventionVerifyRequest{SchemaVersion: PreventionSchemaVersion, ArtifactVersionID: testVersionID, RepoPath: `C:\repo`, Command: []string{}},
 		PreventionVerifyRequest{SchemaVersion: PreventionSchemaVersion, ArtifactVersionID: testVersionID, Command: []string{"go"}},
 		PreventionVerifyRequest{SchemaVersion: PreventionSchemaVersion, ArtifactVersionID: testVersionID, RepoPath: `C:\repo`, Command: []string{"go", ""}},
@@ -135,7 +135,7 @@ func TestPreventionContracts(t *testing.T) {
 	negativeDuration.DurationMS = -1
 	invalid = append(invalid, negativeDuration)
 	secretEvidence := validPreventionVerification()
-	secretEvidence.Evidence = "sk-abcdefghijklmnop"
+	secretEvidence.Evidence = "sk-" + strings.Repeat("a", 16)
 	invalid = append(invalid, secretEvidence)
 	badRate := validPreventionStats()
 	badRate.VerificationPassRate = 2
