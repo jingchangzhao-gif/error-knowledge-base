@@ -155,6 +155,7 @@ func TestMigrateCreatesSchemaV1(t *testing.T) {
 	want := []string{
 		"audit_log", "connectors", "events", "issues", "notices", "occurrences",
 		"outcomes", "retrievals", "sessions", "solution_versions", "solutions",
+		"prevention_artifacts", "prevention_artifact_versions", "issue_preventions", "prevention_verifications",
 	}
 	got := tableNames(t, conn)
 	if len(got) != len(want)+1 { // + schema_migrations
@@ -348,5 +349,153 @@ func TestSchemaStructure(t *testing.T) {
 	}
 	if auditForeignKeys != 0 {
 		t.Fatalf("audit_log has %d foreign keys, want 0 so business deletes cannot cascade into it", auditForeignKeys)
+	}
+
+	preventionFields := map[string][]string{
+		"prevention_artifacts":         {"id", "project_key", "kind", "title", "created_at", "updated_at", "source", "actor"},
+		"prevention_artifact_versions": {"id", "artifact_id", "version", "artifact_path", "content_sha256", "status", "commit_sha", "activated_at", "created_at", "source", "actor"},
+		"issue_preventions":            {"issue_id", "artifact_id", "created_at", "source", "actor"},
+		"prevention_verifications":     {"id", "artifact_version_id", "command", "exit_code", "passed", "duration_ms", "evidence", "environment", "content_sha256", "created_at", "source", "actor"},
+	}
+	for table, fields := range preventionFields {
+		columns := columnNames(t, conn, table)
+		for _, field := range fields {
+			if !columns[field] {
+				t.Errorf("%s is missing %s", table, field)
+			}
+		}
+	}
+	rows, err := conn.Query(context.Background(), `
+		select c.conrelid::regclass::text, pg_get_constraintdef(c.oid)
+		from pg_constraint c
+		where c.conrelid::regclass::text in ('prevention_artifacts', 'prevention_artifact_versions', 'prevention_verifications')`)
+	if err != nil {
+		t.Fatalf("list prevention constraints: %v", err)
+	}
+	defer rows.Close()
+	var constraints string
+	for rows.Next() {
+		var table, definition string
+		if err := rows.Scan(&table, &definition); err != nil {
+			t.Fatal(err)
+		}
+		constraints += table + " " + definition + "\n"
+	}
+	for _, fragment := range []string{"regression_test", "deterministic_check", "agent_instruction", "draft", "verified", "active", "deprecated", "[0-9a-f]", "duration_ms >= 0", "status = 'active'", "version >= 1"} {
+		if !strings.Contains(constraints, fragment) {
+			t.Errorf("prevention constraints do not contain %q:\n%s", fragment, constraints)
+		}
+	}
+	var activeIndex bool
+	if err := conn.QueryRow(context.Background(), `select exists(select 1 from pg_indexes where schemaname = current_schema() and indexname = 'prevention_one_active_version' and indexdef like '%WHERE (status = ' || quote_literal('active') || '%')`).Scan(&activeIndex); err != nil {
+		t.Fatalf("inspect active index: %v", err)
+	}
+	if !activeIndex {
+		t.Error("prevention_one_active_version partial unique index is missing")
+	}
+	var immutableTrigger bool
+	if err := conn.QueryRow(context.Background(), `select exists(select 1 from pg_trigger where tgrelid = 'prevention_artifact_versions'::regclass and tgname = 'prevention_version_immutable' and not tgisinternal)`).Scan(&immutableTrigger); err != nil {
+		t.Fatalf("inspect immutable trigger: %v", err)
+	}
+	if !immutableTrigger {
+		t.Error("prevention_version_immutable trigger is missing")
+	}
+	for _, index := range []string{"issue_preventions_artifact_idx", "prevention_versions_artifact_idx", "prevention_verifications_version_created_idx", "prevention_versions_activated_idx", "occurrences_issue_occurred_idx"} {
+		var exists bool
+		if err := conn.QueryRow(context.Background(), `select exists(select 1 from pg_indexes where schemaname = current_schema() and indexname = $1)`, index).Scan(&exists); err != nil {
+			t.Fatal(err)
+		}
+		if !exists {
+			t.Errorf("index %s is missing", index)
+		}
+	}
+}
+
+func TestPreventionDeletionPreviewMatchesExecution(t *testing.T) {
+	ctx := context.Background()
+	conn := connect(t)
+	freshSchema(t, conn)
+	migrate(t, conn, migrationsDir())
+	var issueID, otherIssueID, artifactID, versionID string
+	if err := conn.QueryRow(ctx, `insert into issues (fingerprint, project_key, title, category, source, actor) values ('aaaaaaaaaaaa', 'alpha', 'a', 'tool', 'test', 'owner') returning id`).Scan(&issueID); err != nil {
+		t.Fatal(err)
+	}
+	if err := conn.QueryRow(ctx, `insert into issues (fingerprint, project_key, title, category, source, actor) values ('bbbbbbbbbbbb', 'beta', 'b', 'tool', 'test', 'owner') returning id`).Scan(&otherIssueID); err != nil {
+		t.Fatal(err)
+	}
+	if err := conn.QueryRow(ctx, `insert into prevention_artifacts (project_key, kind, title, source, actor) values ('alpha', 'intent', 'prevent a', 'test', 'owner') returning id`).Scan(&artifactID); err != nil {
+		t.Fatal(err)
+	}
+	if err := conn.QueryRow(ctx, `insert into prevention_artifact_versions (artifact_id, version, artifact_path, content_sha256, status, commit_sha, activated_at, source, actor) values ($1, 1, 'intent.md', $2, 'active', $3, now(), 'test', 'owner') returning id`, artifactID, strings.Repeat("a", 64), strings.Repeat("b", 40)).Scan(&versionID); err != nil {
+		t.Fatal(err)
+	}
+	for _, id := range []string{issueID, otherIssueID} {
+		if _, err := conn.Exec(ctx, `insert into issue_preventions (issue_id, artifact_id, source, actor) values ($1, $2, 'test', 'owner')`, id, artifactID); err != nil {
+			t.Fatal(err)
+		}
+	}
+	// A target issue may point at another project's artifact. The artifact stays,
+	// but this link is deleted by the issue cascade and must be previewed/count audited.
+	var otherArtifactID string
+	if err := conn.QueryRow(ctx, `insert into prevention_artifacts (project_key, kind, title, source, actor) values ('beta', 'intent', 'prevent b', 'test', 'owner') returning id`).Scan(&otherArtifactID); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := conn.Exec(ctx, `insert into issue_preventions (issue_id, artifact_id, source, actor) values ($1, $2, 'test', 'owner')`, issueID, otherArtifactID); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := conn.Exec(ctx, `insert into prevention_verifications (artifact_version_id, command, passed, duration_ms, evidence, content_sha256, source, actor) values ($1, '["go","test"]', true, 1, 'ok', $2, 'test', 'owner')`, versionID, strings.Repeat("a", 64)); err != nil {
+		t.Fatal(err)
+	}
+	preview := map[string]int64{}
+	rows, err := conn.Query(ctx, `select kind, rows from errkb_delete_preview('alpha', null, null)`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for rows.Next() {
+		var kind string
+		var count int64
+		if err := rows.Scan(&kind, &count); err != nil {
+			t.Fatal(err)
+		}
+		preview[kind] = count
+	}
+	rows.Close()
+	for kind, want := range map[string]int64{"prevention_verifications": 1, "issue_preventions": 3, "prevention_artifact_versions": 1, "prevention_artifacts": 1} {
+		if preview[kind] != want {
+			t.Errorf("preview %s = %d, want %d", kind, preview[kind], want)
+		}
+	}
+	executed := map[string]int64{}
+	rows, err = conn.Query(ctx, `select kind, removed from errkb_delete_scope('alpha', null, null, 'owner')`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for rows.Next() {
+		var kind string
+		var count int64
+		if err := rows.Scan(&kind, &count); err != nil {
+			t.Fatal(err)
+		}
+		executed[kind] = count
+	}
+	rows.Close()
+	for kind, want := range map[string]int64{"prevention_verifications": 1, "issue_preventions": 3, "prevention_artifact_versions": 1, "prevention_artifacts": 1} {
+		if executed[kind] != want {
+			t.Errorf("executed %s = %d, want %d", kind, executed[kind], want)
+		}
+	}
+	var auditCount, otherLinks int
+	if err := conn.QueryRow(ctx, `select count(*) from audit_log where action = 'delete.scope'
+		and detail->'counts'->>'prevention_verifications' = '1'
+		and detail->'counts'->>'issue_preventions' = '3'
+		and detail->'counts'->>'prevention_artifact_versions' = '1'
+		and detail->'counts'->>'prevention_artifacts' = '1'`).Scan(&auditCount); err != nil {
+		t.Fatal(err)
+	}
+	if err := conn.QueryRow(ctx, `select count(*) from issue_preventions where issue_id = $1`, otherIssueID).Scan(&otherLinks); err != nil {
+		t.Fatal(err)
+	}
+	if auditCount != 1 || otherLinks != 0 {
+		t.Fatalf("audit count = %d, remaining cross-issue links = %d; want 1 and 0", auditCount, otherLinks)
 	}
 }

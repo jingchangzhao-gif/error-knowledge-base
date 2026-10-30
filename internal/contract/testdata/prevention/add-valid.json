@@ -1,0 +1,10 @@
+{
+  "schema_version": "v1",
+  "issue_id": "11111111-1111-1111-1111-111111111111",
+  "kind": "regression_test",
+  "title": "Lock regression",
+  "artifact_path": "tests/lock_test.go",
+  "content_sha256": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+  "source": "cli",
+  "actor": "owner"
+}

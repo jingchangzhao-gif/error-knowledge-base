@@ -589,6 +589,56 @@ compat: {
 				issue_status: ["open", "resolved", "wontfix", "misjudged"]
 			}
 		}
+		prevention: {
+			file: "spec/prevention.cue"
+			definitions: ["PreventionAddRequest", "PreventionAddResponse", "PreventionVerifyRequest", "PreventionVerifyResponse", "PreventionActivateRequest", "PreventionActivateResponse", "PreventionListRequest", "PreventionListResponse", "PreventionGetRequest", "PreventionGetResponse", "PreventionStatsRequest", "PreventionStatsResponse", "PreventionArtifact", "PreventionVersion", "PreventionVerification", "PreventionArtifactView", "PreventionCount", "PreventionActivationStats"]
+			schema_version: "v1"
+			semantics: "Local prevention metadata: register immutable repository-relative artifact versions, record explicit CLI verification and activation, and observe real recurrence without storing artifact bodies or repository absolute paths."
+			unknown_fields: "reject"
+			decoder: {file: "internal/contract/local_api.go", marker: "DisallowUnknownFields"}
+			version_anchor: "#PreventionSchemaVersion"
+			fields: [
+				"PreventionAddRequest.schema_version", "PreventionAddRequest.issue_id", "PreventionAddRequest.kind", "PreventionAddRequest.title", "PreventionAddRequest.artifact_path", "PreventionAddRequest.content_sha256", "PreventionAddRequest.source", "PreventionAddRequest.actor",
+				"PreventionAddResponse.schema_version", "PreventionAddResponse.artifact", "PreventionAddResponse.version", "PreventionAddResponse.created",
+				"PreventionVerifyRequest.schema_version", "PreventionVerifyRequest.artifact_version_id", "PreventionVerifyRequest.repo_path", "PreventionVerifyRequest.command",
+				"PreventionVerifyResponse.schema_version", "PreventionVerifyResponse.verification", "PreventionVerifyResponse.version",
+				"PreventionActivateRequest.schema_version", "PreventionActivateRequest.artifact_version_id", "PreventionActivateRequest.repo_path",
+				"PreventionActivateResponse.schema_version", "PreventionActivateResponse.version", "PreventionActivateResponse.activated",
+				"PreventionListRequest.schema_version", "PreventionListRequest.issue_id", "PreventionListRequest.project_key", "PreventionListRequest.kind", "PreventionListRequest.status", "PreventionListRequest.limit", "PreventionListRequest.cursor",
+				"PreventionListResponse.schema_version", "PreventionListResponse.items", "PreventionListResponse.next_cursor",
+				"PreventionGetRequest.schema_version", "PreventionGetRequest.artifact_id",
+				"PreventionGetResponse.schema_version", "PreventionGetResponse.artifact", "PreventionGetResponse.versions", "PreventionGetResponse.verifications",
+				"PreventionStatsRequest.schema_version", "PreventionStatsRequest.project_key", "PreventionStatsRequest.issue_id",
+				"PreventionStatsResponse.schema_version", "PreventionStatsResponse.by_status", "PreventionStatsResponse.by_kind", "PreventionStatsResponse.verification_runs", "PreventionStatsResponse.verification_passed", "PreventionStatsResponse.verification_pass_rate", "PreventionStatsResponse.activations", "PreventionStatsResponse.mature_activations", "PreventionStatsResponse.mature_zero_recurrence", "PreventionStatsResponse.mature_protection_rate", "PreventionStatsResponse.recurring_version_ids",
+				"PreventionArtifact.artifact_id", "PreventionArtifact.project_key", "PreventionArtifact.kind", "PreventionArtifact.title", "PreventionArtifact.issue_ids", "PreventionArtifact.created_at", "PreventionArtifact.updated_at",
+				"PreventionVersion.artifact_version_id", "PreventionVersion.artifact_id", "PreventionVersion.version", "PreventionVersion.artifact_path", "PreventionVersion.content_sha256", "PreventionVersion.status", "PreventionVersion.commit_sha", "PreventionVersion.activated_at", "PreventionVersion.created_at", "PreventionVersion.latest_verification",
+				"PreventionVerification.verification_id", "PreventionVerification.artifact_version_id", "PreventionVerification.command", "PreventionVerification.exit_code", "PreventionVerification.passed", "PreventionVerification.duration_ms", "PreventionVerification.evidence", "PreventionVerification.environment", "PreventionVerification.environment.os", "PreventionVerification.environment.shell", "PreventionVerification.environment.go_version", "PreventionVerification.environment.git_version", "PreventionVerification.content_sha256", "PreventionVerification.created_at",
+				"PreventionArtifactView.artifact", "PreventionArtifactView.versions",
+				"PreventionCount.name", "PreventionCount.count",
+				"PreventionActivationStats.issue_id", "PreventionActivationStats.artifact_id", "PreventionActivationStats.artifact_version_id", "PreventionActivationStats.activated_at", "PreventionActivationStats.commit_sha", "PreventionActivationStats.status", "PreventionActivationStats.first_seen_to_activation_ms", "PreventionActivationStats.recurrence_count", "PreventionActivationStats.before_count", "PreventionActivationStats.after_count", "PreventionActivationStats.before_days", "PreventionActivationStats.after_days", "PreventionActivationStats.observation_status",
+			]
+			required: [
+				"PreventionAddRequest.schema_version", "PreventionAddRequest.issue_id", "PreventionAddRequest.kind", "PreventionAddRequest.title", "PreventionAddRequest.artifact_path", "PreventionAddRequest.content_sha256",
+				"PreventionAddResponse.schema_version", "PreventionAddResponse.artifact", "PreventionAddResponse.version", "PreventionAddResponse.created",
+				"PreventionVerifyRequest.schema_version", "PreventionVerifyRequest.artifact_version_id", "PreventionVerifyRequest.repo_path", "PreventionVerifyRequest.command",
+				"PreventionVerifyResponse.schema_version", "PreventionVerifyResponse.verification", "PreventionVerifyResponse.version",
+				"PreventionActivateRequest.schema_version", "PreventionActivateRequest.artifact_version_id", "PreventionActivateRequest.repo_path",
+				"PreventionActivateResponse.schema_version", "PreventionActivateResponse.version", "PreventionActivateResponse.activated",
+				"PreventionListRequest.schema_version", "PreventionListResponse.schema_version", "PreventionListResponse.items",
+				"PreventionGetRequest.schema_version", "PreventionGetRequest.artifact_id", "PreventionGetResponse.schema_version", "PreventionGetResponse.artifact", "PreventionGetResponse.versions", "PreventionGetResponse.verifications",
+				"PreventionStatsRequest.schema_version", "PreventionStatsResponse.schema_version", "PreventionStatsResponse.by_status", "PreventionStatsResponse.by_kind", "PreventionStatsResponse.verification_runs", "PreventionStatsResponse.verification_passed", "PreventionStatsResponse.verification_pass_rate", "PreventionStatsResponse.activations", "PreventionStatsResponse.mature_activations", "PreventionStatsResponse.mature_zero_recurrence", "PreventionStatsResponse.mature_protection_rate", "PreventionStatsResponse.recurring_version_ids",
+				"PreventionArtifact.artifact_id", "PreventionArtifact.project_key", "PreventionArtifact.kind", "PreventionArtifact.title", "PreventionArtifact.issue_ids", "PreventionArtifact.created_at", "PreventionArtifact.updated_at",
+				"PreventionVersion.artifact_version_id", "PreventionVersion.artifact_id", "PreventionVersion.version", "PreventionVersion.artifact_path", "PreventionVersion.content_sha256", "PreventionVersion.status", "PreventionVersion.created_at",
+				"PreventionVerification.verification_id", "PreventionVerification.artifact_version_id", "PreventionVerification.command", "PreventionVerification.exit_code", "PreventionVerification.passed", "PreventionVerification.duration_ms", "PreventionVerification.evidence", "PreventionVerification.environment", "PreventionVerification.content_sha256", "PreventionVerification.created_at",
+				"PreventionArtifactView.artifact", "PreventionArtifactView.versions", "PreventionCount.name", "PreventionCount.count",
+				"PreventionActivationStats.issue_id", "PreventionActivationStats.artifact_id", "PreventionActivationStats.artifact_version_id", "PreventionActivationStats.activated_at", "PreventionActivationStats.commit_sha", "PreventionActivationStats.status", "PreventionActivationStats.first_seen_to_activation_ms", "PreventionActivationStats.recurrence_count", "PreventionActivationStats.before_count", "PreventionActivationStats.after_count", "PreventionActivationStats.before_days", "PreventionActivationStats.after_days", "PreventionActivationStats.observation_status",
+			]
+			enums: {
+				prevention_kind: ["regression_test", "deterministic_check", "agent_instruction", "intent"]
+				prevention_status: ["draft", "verified", "active", "deprecated"]
+				prevention_observation_status: ["observing", "mature"]
+			}
+		}
 		local_api: {
 			file: "spec/local-api.cue"
 			definitions: ["Request", "Response", "LocalError"]
@@ -627,7 +677,7 @@ compat: {
 				"LocalError.retryable",
 			]
 			enums: {
-				operation: ["lookup", "search", "record", "feedback", "list", "stats", "capture", "record_solution", "set_status", "get_issue", "set_solution_status", "delete_solution"]
+				operation: ["lookup", "search", "record", "feedback", "list", "stats", "capture", "record_solution", "set_status", "get_issue", "set_solution_status", "delete_solution", "prevention_add", "prevention_verify", "prevention_activate", "prevention_list", "prevention_get", "prevention_stats"]
 				error_code: ["invalid_request", "not_found", "unavailable", "conflict", "internal"]
 			}
 		}
@@ -716,7 +766,7 @@ compat: {
 	// were produced by an earlier release and check that the current build keeps
 	// them working:
 	//   - a real PostgreSQL 16.15 schema dump at migration 0007 is migrated to
-	//     0008 with the data intact;
+	//     0009 with the data intact;
 	//   - a configuration file written before the optional templates block existed
 	//     loads unchanged and still validates;
 	//   - the TypeScript-era ERRORS.md imports without loss, and a document with
@@ -730,7 +780,7 @@ compat: {
 		schema: {
 			ledger:    "schema_migrations"
 			from:      "0007"
-			to:        "0008"
+			to:        "0009"
 			mode:      "forward only, one transaction per migration"
 			direct:    true
 			data:      "existing rows are preserved; a new column is nullable or carries a default"
@@ -757,8 +807,8 @@ compat: {
 			degradation:   "a connector that cannot capture a field declares the fallback channel and the exact field loss"
 		}
 		matrix: [
-			{from: "0001-0006", to: "0008", path: "direct", note: "the migrator applies every missing file in version order"},
-			{from: "0007", to: "0008", path: "direct", note: "nullable duration_ms; rows written before the upgrade stay valid and are excluded from the percentile"},
+			{from: "0001-0006", to: "0009", path: "direct", note: "the migrator applies every missing file in version order"},
+			{from: "0007", to: "0009", path: "direct", note: "nullable duration_ms; rows written before the upgrade stay valid and are excluded from the percentile"},
 			{from: "config v1 before templates", to: "config v1 with templates", path: "direct", note: "templates is optional, so the old file loads with it unset"},
 			{from: "ERRORS.md v1 single version", to: "ERRORS.md v1 multi version", path: "direct", note: "an imported issue gains its versions in the order the document lists them"},
 			{from: "connector v1 with a partial capability", to: "connector v1", path: "direct", note: "missing fields stay declared and the fallback carries the loss"},

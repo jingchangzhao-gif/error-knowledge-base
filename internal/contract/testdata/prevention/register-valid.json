@@ -1,0 +1,10 @@
+{
+  "schema_version": "v1",
+  "issue_id": "11111111-1111-1111-1111-111111111111",
+  "kind": "agent_instruction",
+  "title": "Check lock cleanup",
+  "artifact_path": "AGENTS.md",
+  "content_sha256": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+  "source": "mcp",
+  "actor": "agent"
+}
