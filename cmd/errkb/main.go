@@ -42,6 +42,8 @@ Commands:
   list                   list issues or solutions
   feedback               record an outcome for a solution version
   stats                  knowledge-base totals and timings
+  prevention add|verify|activate|list|show
+                         register, verify, activate and inspect preventions
   run -- <command>       run a command and look up its known fix
   tail --file <path>     follow a log file and record its failures
   markdown import|export exchange the legacy ERRORS.md format
@@ -68,14 +70,20 @@ Exit codes:
 `, version, runtime.GOOS, runtime.GOARCH)
 }
 
-// run strips the global --json switch wherever it appears, then dispatches.
-// --json is accepted before or after the command because the flag package stops
-// parsing at the first positional argument and every command has positionals.
+// run strips the global --json switch wherever it appears before a literal
+// command separator. Arguments after `--` belong to the child command and must
+// reach verification unchanged, including a child flag named --json.
 func run(args []string, stdout, stderr io.Writer) int {
 	jsonMode := false
+	literalCommand := false
 	clean := make([]string, 0, len(args))
 	for _, arg := range args {
-		if arg == "--json" {
+		if arg == "--" {
+			literalCommand = true
+			clean = append(clean, arg)
+			continue
+		}
+		if !literalCommand && arg == "--json" {
 			jsonMode = true
 			continue
 		}
