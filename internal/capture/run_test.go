@@ -251,6 +251,10 @@ func TestRunCancellationStopsTheChild(t *testing.T) {
 }
 
 func TestRunEnvironmentSummaryIsWhitelisted(t *testing.T) {
+	summary := capture.SummarizeEnvironment()
+	if summary.OS == "" || summary.Arch == "" || summary.RuntimeVersions["go"] == "" {
+		t.Fatalf("exported environment summary is incomplete: %+v", summary)
+	}
 	options := helperOptions("fail")
 	options.ProjectKey = "capture-test"
 	options.ConnectorID = "0195f0f0-0000-4000-8000-00000000b001"

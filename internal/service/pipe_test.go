@@ -186,6 +186,46 @@ func (f *fakeBackend) Capture(_ context.Context, request contract.CaptureRequest
 	}, nil
 }
 
+func (f *fakeBackend) PreventionAdd(context.Context, contract.PreventionAddRequest) (contract.PreventionAddResponse, error) {
+	f.note(contract.OperationPreventionAdd)
+	if f.err != nil {
+		return contract.PreventionAddResponse{}, f.err
+	}
+	return contract.PreventionAddResponse{SchemaVersion: "v1", Artifact: preventionContractArtifact(), Version: preventionContractVersion("draft"), Created: true}, nil
+}
+
+func (f *fakeBackend) PreventionVerify(context.Context, contract.PreventionVerifyRequest) (contract.PreventionVerifyResponse, error) {
+	f.note(contract.OperationPreventionVerify)
+	if f.err != nil {
+		return contract.PreventionVerifyResponse{}, f.err
+	}
+	return contract.PreventionVerifyResponse{SchemaVersion: "v1", Verification: preventionContractVerification(), Version: preventionContractVersion("verified")}, nil
+}
+
+func (f *fakeBackend) PreventionActivate(context.Context, contract.PreventionActivateRequest) (contract.PreventionActivateResponse, error) {
+	f.note(contract.OperationPreventionActivate)
+	if f.err != nil {
+		return contract.PreventionActivateResponse{}, f.err
+	}
+	return contract.PreventionActivateResponse{SchemaVersion: "v1", Version: preventionContractVersion("active"), Activated: true}, nil
+}
+
+func (f *fakeBackend) PreventionList(context.Context, contract.PreventionListRequest) (contract.PreventionListResponse, error) {
+	f.note(contract.OperationPreventionList)
+	if f.err != nil {
+		return contract.PreventionListResponse{}, f.err
+	}
+	return contract.PreventionListResponse{SchemaVersion: "v1", Items: []contract.PreventionArtifactView{}}, nil
+}
+
+func (f *fakeBackend) PreventionGet(context.Context, contract.PreventionGetRequest) (contract.PreventionGetResponse, error) {
+	f.note(contract.OperationPreventionGet)
+	if f.err != nil {
+		return contract.PreventionGetResponse{}, f.err
+	}
+	return contract.PreventionGetResponse{SchemaVersion: "v1", Artifact: preventionContractArtifact(), Versions: []contract.PreventionVersion{}, Verifications: []contract.PreventionVerification{}}, nil
+}
+
 func newTestPipeName() string {
 	return `\\.\pipe\errkb-test-` + strconv.FormatInt(time.Now().UnixNano(), 10)
 }
