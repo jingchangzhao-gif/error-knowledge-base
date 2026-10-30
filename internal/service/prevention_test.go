@@ -86,7 +86,7 @@ func TestPreventionHelper(t *testing.T) {
 		fmt.Fprintln(os.Stderr, "assertion failed")
 		os.Exit(7)
 	case "secret":
-		fmt.Fprintln(os.Stderr, "auth failed for sk-abcdefghijklmnopqrstuvwx")
+		fmt.Fprintln(os.Stderr, "auth failed for "+"sk-"+"abcdefghijklmnopqrstuvwx")
 		os.Exit(1)
 	case "flood":
 		chunk := strings.Repeat("x", 1024)

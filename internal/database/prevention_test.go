@@ -365,9 +365,9 @@ func TestPreventionRedactsRegistrationAndVerification(t *testing.T) {
 	conn, _ := preventionSchema(t)
 	issueID := preventionIssue(t, conn, "proj-a", "resolved")
 	registration := preventionRegistration(issueID)
-	registration.Title = "token sk-abcdefghijklmnopqrstuvwx"
-	registration.Source = "source sk-abcdefghijklmnopqrstuvwx"
-	registration.Actor = "actor sk-abcdefghijklmnopqrstuvwx"
+	registration.Title = "token sk-" + "abcdefghijklmnopqrstuvwx"
+	registration.Source = "source sk-" + "abcdefghijklmnopqrstuvwx"
+	registration.Actor = "actor sk-" + "abcdefghijklmnopqrstuvwx"
 	registered := registerPrevention(t, conn, registration)
 	if strings.Contains(registered.Artifact.Title, "sk-") {
 		t.Fatalf("title was not redacted: %q", registered.Artifact.Title)
@@ -381,7 +381,7 @@ func TestPreventionRedactsRegistrationAndVerification(t *testing.T) {
 	}
 	verification, err := database.RecordPreventionVerification(context.Background(), conn, database.PreventionVerificationInput{
 		ArtifactVersionID: registered.Version.ArtifactVersionID,
-		Command:           []string{"tool", "sk-abcdefghijklmnopqrstuvwx"}, Evidence: "auth sk-abcdefghijklmnopqrstuvwx",
+		Command:           []string{"tool", "sk-" + "abcdefghijklmnopqrstuvwx"}, Evidence: "auth sk-" + "abcdefghijklmnopqrstuvwx",
 		ContentSHA256: preventionHashA, Environment: map[string]string{"os": "windows"},
 	})
 	if err != nil {
