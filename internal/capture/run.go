@@ -143,7 +143,7 @@ func Run(ctx context.Context, options RunOptions) (RunResult, error) {
 		return result, nil
 	}
 
-	summary := summarizeEnvironment()
+	summary := SummarizeEnvironment()
 	text := stderr.AnalysisText()
 	if strings.TrimSpace(text) == "" {
 		text = stdout.AnalysisText()
@@ -235,8 +235,8 @@ type EnvironmentSummary struct {
 	RuntimeVersions map[string]string
 }
 
-// summarizeEnvironment reads only the whitelisted values and keeps them short.
-func summarizeEnvironment() EnvironmentSummary {
+// SummarizeEnvironment reads only the whitelisted values and keeps them short.
+func SummarizeEnvironment() EnvironmentSummary {
 	summary := EnvironmentSummary{
 		OS:   runtime.GOOS,
 		Arch: runtime.GOARCH,
@@ -258,6 +258,10 @@ func summarizeEnvironment() EnvironmentSummary {
 	}
 	return summary
 }
+
+// summarizeEnvironment keeps the existing internal capture call sites aligned
+// while prevention uses the exported whitelist directly.
+func summarizeEnvironment() EnvironmentSummary { return SummarizeEnvironment() }
 
 // streamCapture keeps the first and the last half of the allowed bytes, so a
 // headline near either edge survives. The middle is replaced by one marker

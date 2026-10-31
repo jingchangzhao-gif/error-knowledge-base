@@ -42,6 +42,11 @@ type Backend interface {
 	SetSolutionStatus(context.Context, contract.SetSolutionStatusRequest) (contract.SetSolutionStatusResponse, error)
 	// DeleteSolution removes a solution and its versions after confirmation.
 	DeleteSolution(context.Context, contract.DeleteSolutionRequest) (contract.DeleteSolutionResponse, error)
+	PreventionAdd(context.Context, contract.PreventionAddRequest) (contract.PreventionAddResponse, error)
+	PreventionVerify(context.Context, contract.PreventionVerifyRequest) (contract.PreventionVerifyResponse, error)
+	PreventionActivate(context.Context, contract.PreventionActivateRequest) (contract.PreventionActivateResponse, error)
+	PreventionList(context.Context, contract.PreventionListRequest) (contract.PreventionListResponse, error)
+	PreventionGet(context.Context, contract.PreventionGetRequest) (contract.PreventionGetResponse, error)
 }
 
 // The error codes are the closed set from spec/local-api.cue. A caller must be
@@ -196,6 +201,41 @@ func (a *API) Handle(ctx context.Context, frame []byte) []byte {
 				APIErrorf(CodeInvalidRequest, "decode the set_status payload: %v", err))
 		}
 		response, err := a.backend.SetStatus(ctx, payload)
+		return a.encodeResult(request, response, err)
+	case contract.OperationPreventionAdd:
+		var payload contract.PreventionAddRequest
+		if err := json.Unmarshal(request.Payload, &payload); err != nil {
+			return a.rejectFrame(request.RequestID, request.Operation, APIErrorf(CodeInvalidRequest, "decode the prevention_add payload: %v", err))
+		}
+		response, err := a.backend.PreventionAdd(ctx, payload)
+		return a.encodeResult(request, response, err)
+	case contract.OperationPreventionVerify:
+		var payload contract.PreventionVerifyRequest
+		if err := json.Unmarshal(request.Payload, &payload); err != nil {
+			return a.rejectFrame(request.RequestID, request.Operation, APIErrorf(CodeInvalidRequest, "decode the prevention_verify payload: %v", err))
+		}
+		response, err := a.backend.PreventionVerify(ctx, payload)
+		return a.encodeResult(request, response, err)
+	case contract.OperationPreventionActivate:
+		var payload contract.PreventionActivateRequest
+		if err := json.Unmarshal(request.Payload, &payload); err != nil {
+			return a.rejectFrame(request.RequestID, request.Operation, APIErrorf(CodeInvalidRequest, "decode the prevention_activate payload: %v", err))
+		}
+		response, err := a.backend.PreventionActivate(ctx, payload)
+		return a.encodeResult(request, response, err)
+	case contract.OperationPreventionList:
+		var payload contract.PreventionListRequest
+		if err := json.Unmarshal(request.Payload, &payload); err != nil {
+			return a.rejectFrame(request.RequestID, request.Operation, APIErrorf(CodeInvalidRequest, "decode the prevention_list payload: %v", err))
+		}
+		response, err := a.backend.PreventionList(ctx, payload)
+		return a.encodeResult(request, response, err)
+	case contract.OperationPreventionGet:
+		var payload contract.PreventionGetRequest
+		if err := json.Unmarshal(request.Payload, &payload); err != nil {
+			return a.rejectFrame(request.RequestID, request.Operation, APIErrorf(CodeInvalidRequest, "decode the prevention_get payload: %v", err))
+		}
+		response, err := a.backend.PreventionGet(ctx, payload)
 		return a.encodeResult(request, response, err)
 	default:
 		// DecodePipeRequest already rejects unknown operations; this branch is

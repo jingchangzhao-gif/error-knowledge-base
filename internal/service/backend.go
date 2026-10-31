@@ -463,6 +463,15 @@ func translateBackendError(operation string, err error) error {
 	if errors.Is(err, pgx.ErrNoRows) {
 		return APIErrorf(CodeNotFound, "%s: %v", operation, err)
 	}
+	if errors.Is(err, database.ErrPreventionInvalid) {
+		return APIErrorf(CodeInvalidRequest, "%s: %v", operation, err)
+	}
+	if errors.Is(err, database.ErrPreventionConflict) {
+		return APIErrorf(CodeConflict, "%s: %v", operation, err)
+	}
+	if isDatabaseUnreachable(err) {
+		return APIErrorf(CodeUnavailable, "%s: %v", operation, err)
+	}
 	var pgError *pgconn.PgError
 	if errors.As(err, &pgError) {
 		switch pgError.Code {
