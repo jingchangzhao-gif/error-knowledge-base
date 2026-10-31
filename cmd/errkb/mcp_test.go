@@ -8,17 +8,26 @@ import (
 	"io"
 	"strings"
 	"testing"
+
+	"github.com/jingchangzhao-gif/error-knowledge-base/internal/mcp"
 )
 
 // TestMCPSelftestAnswers runs the same initialize + tools/list exchange a host
-// performs, in memory, and checks the nine-tool summary.
+// performs, in memory, and checks the twelve-tool summary and human-only CLI
+// prevention transitions.
 func TestMCPSelftestAnswers(t *testing.T) {
 	var stderr bytes.Buffer
 	if code := runMCP([]string{"selftest"}, strings.NewReader(""), io.Discard, &stderr); code != exitOK {
 		t.Fatalf("selftest exited %d: %s", code, stderr.String())
 	}
-	if !strings.Contains(stderr.String(), "9 tools available") {
+	if !strings.Contains(stderr.String(), "12 tools available") {
 		t.Fatalf("selftest summary does not report the tool count: %q", stderr.String())
+	}
+	notice := strings.ToLower(mcp.CorrectionNotice)
+	for _, wanted := range []string{"prevention", "draft", "verify", "activate", "cli", "only"} {
+		if !strings.Contains(notice, wanted) {
+			t.Fatalf("MCP instructions do not state the CLI boundary %q: %s", wanted, mcp.CorrectionNotice)
+		}
 	}
 }
 

@@ -35,6 +35,14 @@ type fakeBackend struct {
 	statusRequests   []contract.SetStatusRequest
 	issueRequests    []contract.GetIssueRequest
 
+	preventionAddRequests  []contract.PreventionAddRequest
+	preventionListRequests []contract.PreventionListRequest
+	preventionGetRequests  []contract.PreventionGetRequest
+	preventionAddResponse  *contract.PreventionAddResponse
+	preventionListResponse *contract.PreventionListResponse
+	preventionGetResponse  *contract.PreventionGetResponse
+	preventionErr          error
+
 	searchDelays []time.Duration
 	searchCalls  int
 	searchErr    error
@@ -426,16 +434,16 @@ func TestInitializeStatesMCPIsNotPassiveCapture(t *testing.T) {
 		t.Fatalf("initialize carries no instructions: %v", frame)
 	}
 	lowered := strings.ToLower(instructions)
-	for _, wanted := range []string{"passive", "mcp"} {
+	for _, wanted := range []string{"passive", "mcp", "prevention", "draft", "verify", "activate", "cli", "only"} {
 		if !strings.Contains(lowered, wanted) {
 			t.Fatalf("instructions do not mention %q (got %q)", wanted, instructions)
 		}
 	}
 }
 
-// TestToolsListPublishesTheEightCoreTools covers the eight-tool list and the
-// ban on a capture/subscription tool.
-func TestToolsListPublishesTheNineCoreTools(t *testing.T) {
+// TestToolsListPublishesTheTwelveCoreTools also bans passive capture and
+// executable prevention verification or activation.
+func TestToolsListPublishesTheTwelveCoreTools(t *testing.T) {
 	h := startHarness(t, newFakeBackend())
 	h.send(1, "tools/list", nil)
 	frame := h.receive()
@@ -449,6 +457,7 @@ func TestToolsListPublishesTheNineCoreTools(t *testing.T) {
 		mcp.ToolLookup, mcp.ToolSearch, mcp.ToolRecord,
 		mcp.ToolFeedback, mcp.ToolList, mcp.ToolStats,
 		mcp.ToolRecordSolution, mcp.ToolSetStatus, mcp.ToolGetIssue,
+		mcp.ToolPreventionRegister, mcp.ToolPreventionList, mcp.ToolPreventionGet,
 	}
 	if len(tools) != len(wanted) {
 		t.Fatalf("tool count = %d, want %d (%v)", len(tools), len(wanted), tools)
