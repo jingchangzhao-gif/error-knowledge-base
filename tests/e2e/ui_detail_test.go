@@ -17,6 +17,7 @@ import (
 	"time"
 
 	"github.com/jackc/pgx/v5"
+	"github.com/jingchangzhao-gif/error-knowledge-base/internal/contract"
 	"github.com/jingchangzhao-gif/error-knowledge-base/internal/database"
 )
 
@@ -109,6 +110,24 @@ func TestToolboxDetailAndSolutionEditing(t *testing.T) {
 	if err := database.TransitionSolution(ctx, conn, solutionID, database.SolutionVerified); err != nil {
 		t.Fatalf("verify the solution: %v", err)
 	}
+	if _, err := conn.Exec(ctx, `update issues set status = 'resolved' where id = $1`, issueID); err != nil {
+		t.Fatalf("resolve the prevention issue fixture: %v", err)
+	}
+
+	repo := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(repo, "checks"), 0o700); err != nil {
+		t.Fatalf("create the prevention fixture directory: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(repo, "checks", "regression.txt"), []byte("read-only prevention fixture\n"), 0o600); err != nil {
+		t.Fatalf("write the prevention fixture: %v", err)
+	}
+	addOutput, addCode := runCLI(t, binary, pipeName, "prevention", "add",
+		"--issue", issueID, "--kind", "regression_test", "--title", "Locked file regression",
+		"--repo", repo, "--path", "checks/regression.txt", "--json")
+	var added contract.PreventionAddResponse
+	if addCode != 0 || json.Unmarshal([]byte(addOutput), &added) != nil {
+		t.Fatalf("prevention add exit=%d response=%+v output=%s", addCode, added, addOutput)
+	}
 
 	configPath := filepath.Join(dataDir, "config.yaml")
 	pageURL, stop := startToolbox(t, binary, scopedDSN, configPath, pipeName)
@@ -158,6 +177,27 @@ func TestToolboxDetailAndSolutionEditing(t *testing.T) {
 	}
 	if len(detail.Issue.Solutions[0].Versions) == 0 || detail.Issue.Solutions[0].Versions[0].Body != "restart the service" {
 		t.Fatalf("the version history is missing: %+v", detail.Issue.Solutions[0].Versions)
+	}
+
+	// Preventions use the same daemon client as the detail read and remain
+	// strictly read-only in the Web shell.
+	payload, status = callJSON(t, http.MethodGet, base+"/api/issues/"+issueID+"/preventions", token, nil)
+	var preventions contract.PreventionListResponse
+	if status != http.StatusOK || json.Unmarshal(payload, &preventions) != nil {
+		t.Fatalf("preventions status=%d response=%+v body=%s", status, preventions, payload)
+	}
+	if err := preventions.Validate(); err != nil || len(preventions.Items) != 1 || len(preventions.Items[0].Versions) != 1 {
+		t.Fatalf("prevention response=%+v err=%v", preventions, err)
+	}
+	if preventions.Items[0].Artifact.ArtifactID != added.Artifact.ArtifactID ||
+		preventions.Items[0].Artifact.Title != "Locked file regression" ||
+		preventions.Items[0].Versions[0].ArtifactVersionID != added.Version.ArtifactVersionID ||
+		preventions.Items[0].Versions[0].Status != "draft" {
+		t.Fatalf("wrong prevention projection: %+v", preventions.Items[0])
+	}
+	if _, status = callJSON(t, http.MethodPost, base+"/api/issues/"+issueID+"/preventions", token,
+		strings.NewReader(`{"status":"active"}`)); status != http.StatusMethodNotAllowed {
+		t.Fatalf("prevention Web write status=%d, want 405", status)
 	}
 
 	// Append a version: audited, and the issue is resolved by the write path.

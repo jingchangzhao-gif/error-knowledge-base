@@ -3,6 +3,7 @@ package webshell
 import (
 	"context"
 	"errors"
+	"io/fs"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -118,5 +119,28 @@ func TestDetailPageServesTheShell(t *testing.T) {
 	}
 	if !strings.Contains(response.Body.String(), server.Token()) {
 		t.Fatal("the page did not carry the per-launch token")
+	}
+}
+
+func TestDetailAssetsIncludeReadOnlyPreventions(t *testing.T) {
+	server := detailServer(t, nil)
+	script, err := fs.ReadFile(server.assets, "app.js")
+	if err != nil {
+		t.Fatalf("read the detail script: %v", err)
+	}
+	text := string(script)
+	for _, wanted := range []string{
+		"function renderPreventions", "Promise.allSettled", "/preventions",
+		"errkb prevention verify", "errkb prevention activate", "latest verification",
+		"activated_at", "commit_sha", "Historical version",
+	} {
+		if !strings.Contains(text, wanted) {
+			t.Fatalf("detail script does not contain %q", wanted)
+		}
+	}
+	for _, forbidden := range []string{"data-prevention-action", "prevention/verify", "prevention/activate", "prevented "} {
+		if strings.Contains(text, forbidden) {
+			t.Fatalf("detail script exposes forbidden prevention behavior %q", forbidden)
+		}
 	}
 }

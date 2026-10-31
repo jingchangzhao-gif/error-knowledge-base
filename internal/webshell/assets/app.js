@@ -242,27 +242,149 @@ function renderDetail(detail) {
   );
 }
 
+function preventionVerification(version) {
+  const verification = version.latest_verification;
+  if (!verification) return "";
+  const outcome = verification.passed ? "passed" : "failed";
+  const exitCode =
+    typeof verification.exit_code === "number"
+      ? " · exit " + escapeText(String(verification.exit_code))
+      : "";
+  return (
+    '<p class="meta">latest verification ' +
+    escapeText(outcome) +
+    " · " +
+    escapeText(verification.created_at || "not recorded") +
+    exitCode +
+    (verification.command
+      ? " · command " + escapeText(verification.command.join(" "))
+      : "") +
+    "</p>"
+  );
+}
+
+function preventionCLIHint(version) {
+  const id = escapeText(version.artifact_version_id);
+  if (version.status === "draft") {
+    return (
+      '<p class="reason">Verify locally: <code>errkb prevention verify ' +
+      id +
+      " --repo &lt;repository&gt; -- &lt;command&gt;</code></p>"
+    );
+  }
+  if (version.status === "verified") {
+    return (
+      '<p class="reason">Activate locally: <code>errkb prevention activate ' +
+      id +
+      " --repo &lt;repository&gt;</code></p>"
+    );
+  }
+  if (version.status === "deprecated") {
+    return '<p class="meta">Historical version; no action available.</p>';
+  }
+  return "";
+}
+
+function renderPreventions(result) {
+  const opening = '<section class="preventions"><h3>Preventions</h3>';
+  if (result.status === "rejected") {
+    const message =
+      result.reason && result.reason.message
+        ? result.reason.message
+        : "could not load preventions";
+    return (
+      opening + '<p class="error">' + escapeText(message) + "</p></section>"
+    );
+  }
+  const items = (result.value && result.value.items) || [];
+  if (items.length === 0) {
+    return opening + "<p>no preventions recorded yet</p></section>";
+  }
+  return (
+    opening +
+    items
+      .map((item) => {
+        const artifact = item.artifact || {};
+        const versions = (item.versions || [])
+          .slice()
+          .sort((left, right) => (right.version || 0) - (left.version || 0));
+        return (
+          '<article class="version prevention">' +
+          "<h3>" +
+          escapeText(artifact.kind || "unknown") +
+          " · " +
+          escapeText(artifact.title || "untitled") +
+          "</h3>" +
+          versions
+            .map((version) => {
+              const active =
+                version.status === "active"
+                  ? '<p class="meta">HEAD ' +
+                    escapeText(version.commit_sha || "not recorded") +
+                    " · activated " +
+                    escapeText(version.activated_at || "not recorded") +
+                    "</p>"
+                  : "";
+              return (
+                '<section class="prevention-version">' +
+                "<h4>v" +
+                escapeText(String(Number(version.version || 0))) +
+                " · " +
+                escapeText(version.status || "unknown") +
+                "</h4>" +
+                '<p class="meta">path <code>' +
+                escapeText(version.artifact_path || "not recorded") +
+                "</code></p>" +
+                preventionVerification(version) +
+                active +
+                preventionCLIHint(version) +
+                "</section>"
+              );
+            })
+            .join("") +
+          "</article>"
+        );
+      })
+      .join("") +
+    "</section>"
+  );
+}
+
 async function loadDetail() {
   const match = location.pathname.match(/^\/issues\/([^/]+)$/);
   if (!match) return;
   const issueID = decodeURIComponent(match[1]);
   const main = document.querySelector("main");
   main.innerHTML = '<p id="status" role="status">loading…</p>';
-  try {
-    const response = await fetch("/api/issues/" + encodeURIComponent(issueID), {
+  const read = async (url) => {
+    const response = await fetch(url, {
       headers: { "x-errkb-token": token },
     });
+    const payload = await response.json().catch(() => ({}));
     if (!response.ok) {
-      const payload = await response.json().catch(() => ({}));
+      throw new Error(payload.message || "the errkb core is not reachable");
+    }
+    return payload;
+  };
+  try {
+    const [detailResult, preventionResult] = await Promise.allSettled([
+      read("/api/issues/" + encodeURIComponent(issueID)),
+      read("/api/issues/" + encodeURIComponent(issueID) + "/preventions"),
+    ]);
+    if (detailResult.status === "rejected") {
+      const message =
+        detailResult.reason && detailResult.reason.message
+          ? detailResult.reason.message
+          : "could not load the issue";
       main.innerHTML =
         '<p class="error">' +
-        escapeText(payload.message || "could not load the issue") +
+        escapeText(message) +
         "</p>" +
         '<p><a href="/">back to search</a></p>';
       return;
     }
-    const payload = await response.json();
-    main.innerHTML = renderDetail(payload.issue || {});
+    main.innerHTML = renderDetail(detailResult.value.issue || {});
+    main.insertAdjacentHTML("beforeend", renderPreventions(preventionResult));
     for (const button of main.querySelectorAll("[data-copy]")) {
       button.addEventListener("click", async () => {
         try {

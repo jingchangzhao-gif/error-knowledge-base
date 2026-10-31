@@ -20,26 +20,29 @@ import (
 	"github.com/jingchangzhao-gif/error-knowledge-base/internal/contract"
 )
 
-// The nine tool names are fixed by spec/mcp-tools.cue.
+// The twelve tool names are the complete MCP operation surface.
 const (
-	ToolLookup         = "err_lookup"
-	ToolSearch         = "err_search"
-	ToolRecord         = "err_record"
-	ToolFeedback       = "err_feedback"
-	ToolList           = "err_list"
-	ToolStats          = "err_stats"
-	ToolRecordSolution = "err_record_solution"
-	ToolSetStatus      = "err_set_status"
-	ToolGetIssue       = "err_get_issue"
+	ToolLookup             = "err_lookup"
+	ToolSearch             = "err_search"
+	ToolRecord             = "err_record"
+	ToolFeedback           = "err_feedback"
+	ToolList               = "err_list"
+	ToolStats              = "err_stats"
+	ToolRecordSolution     = "err_record_solution"
+	ToolSetStatus          = "err_set_status"
+	ToolGetIssue           = "err_get_issue"
+	ToolPreventionRegister = "err_prevention_register"
+	ToolPreventionList     = "err_prevention_list"
+	ToolPreventionGet      = "err_prevention_get"
 )
 
 // CorrectionNotice is published in initialize.instructions and appended to
-// every tool description. The plan requires the server to say out loud that
-// MCP is not passive capture, so a host cannot mistake installing it for
-// installing a recorder.
-const CorrectionNotice = "MCP provides active lookup, search, record, feedback, list, stats, solution recording and status correction only. " +
+// every tool description. MCP can register prevention drafts and read their
+// state, but only a human invoking the CLI can mechanically verify or activate.
+const CorrectionNotice = "MCP provides active lookup, search, record, feedback, list, stats, solution recording, status correction, prevention draft registration and prevention queries only. " +
 	"It is not passive capture: no tool watches a host, subscribes to events or reports failures by itself. " +
-	"Passive capture belongs to hooks, plugins, CLI wrappers and log channels."
+	"Passive capture belongs to hooks, plugins, CLI wrappers and log channels. " +
+	"Prevention verify and activate are available only to the user through the CLI; MCP never performs those transitions."
 
 // ErrInvalidArguments marks a tool argument that breaks the contract. The
 // server maps it to JSON-RPC invalid-params (-32602); backend failures map to
@@ -47,8 +50,9 @@ const CorrectionNotice = "MCP provides active lookup, search, record, feedback, 
 // "the daemon is down".
 var ErrInvalidArguments = errors.New("invalid tool arguments")
 
-// Backend is the ten-operation surface tools reuse. The daemon's SQL backend
-// and the CLI's pipe client both speak it; a tool never talks to PostgreSQL.
+// Backend is the operation surface tools reuse. The daemon's SQL backend and
+// the CLI's pipe client both speak it; a tool never talks to PostgreSQL. It
+// deliberately has no PreventionVerify or PreventionActivate method.
 type Backend interface {
 	Lookup(context.Context, contract.LookupRequest) (contract.LookupResponse, error)
 	Search(context.Context, contract.SearchRequest) (contract.SearchResponse, error)
@@ -59,6 +63,9 @@ type Backend interface {
 	RecordSolution(context.Context, contract.RecordSolutionRequest) (contract.RecordSolutionResponse, error)
 	SetStatus(context.Context, contract.SetStatusRequest) (contract.SetStatusResponse, error)
 	GetIssue(context.Context, contract.GetIssueRequest) (contract.GetIssueResponse, error)
+	PreventionAdd(context.Context, contract.PreventionAddRequest) (contract.PreventionAddResponse, error)
+	PreventionList(context.Context, contract.PreventionListRequest) (contract.PreventionListResponse, error)
+	PreventionGet(context.Context, contract.PreventionGetRequest) (contract.PreventionGetResponse, error)
 }
 
 // Tool is one published descriptor plus its typed call.
@@ -79,10 +86,8 @@ func (t Tool) Call(ctx context.Context, arguments json.RawMessage) (any, error) 
 	return t.call(ctx, arguments)
 }
 
-// NewTools builds the ten tools over one backend. The write-back pair
-// (record solution / set status) lets a host close the loop by itself, and the
-// detail read lets it inspect an issue before writing; there is still no
-// capture tool to accidentally advertise.
+// NewTools builds the twelve tools over one backend. Prevention registration
+// only creates drafts; verification and activation remain human CLI actions.
 func NewTools(backend Backend) []Tool {
 	return []Tool{
 		lookupTool(backend),
@@ -94,6 +99,9 @@ func NewTools(backend Backend) []Tool {
 		recordSolutionTool(backend),
 		setStatusTool(backend),
 		getIssueTool(backend),
+		preventionRegisterTool(backend),
+		preventionListTool(backend),
+		preventionGetTool(backend),
 	}
 }
 

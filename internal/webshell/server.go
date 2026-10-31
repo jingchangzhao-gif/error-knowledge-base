@@ -35,6 +35,7 @@ type Server struct {
 	assets            fs.FS
 	search            SearchFunc
 	detail            GetIssueFunc
+	preventions       PreventionListFunc
 	record            RecordSolutionFunc
 	setStatus         SetStatusFunc
 	setSolutionStatus SetSolutionStatusFunc
@@ -96,6 +97,7 @@ func (s *Server) Handler() http.Handler {
 	mux.Handle("GET /assets/", http.StripPrefix("/assets/", http.FileServer(http.FS(s.assets))))
 	mux.HandleFunc("POST /api/search", s.serveSearch)
 	mux.HandleFunc("GET /api/issues/{id}", s.serveIssue)
+	mux.HandleFunc("GET /api/issues/{id}/preventions", s.servePreventions)
 	mux.HandleFunc("GET /issues/{id}", s.servePage)
 	mux.HandleFunc("GET /stats", s.servePage)
 	mux.HandleFunc("GET /settings", s.servePage)

@@ -71,6 +71,7 @@ func runWeb(args []string, stdout, stderr io.Writer) int {
 		fmt.Fprintf(stderr, "errkb ui: %v\n", err)
 		return exitInternal
 	}
+	server.EnablePreventions(client.PreventionList)
 	server.EnableWrites(client.RecordSolution, client.SetStatus, client.SetSolutionStatus, client.DeleteSolution)
 	// The statistics, audit and settings pages read PostgreSQL directly: they
 	// are local-UI features, not daemon operations, so the pipe contract stays

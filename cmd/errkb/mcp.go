@@ -162,6 +162,45 @@ func (b pipeBackend) GetIssue(ctx context.Context, request contract.GetIssueRequ
 	return response, err
 }
 
+func (b pipeBackend) PreventionAdd(ctx context.Context, request contract.PreventionAddRequest) (contract.PreventionAddResponse, error) {
+	var response contract.PreventionAddResponse
+	err := b.with(ctx, func(ctx context.Context, client apiClient) error {
+		answer, callErr := client.PreventionAdd(ctx, request)
+		if callErr != nil {
+			return callErr
+		}
+		response = answer
+		return nil
+	})
+	return response, err
+}
+
+func (b pipeBackend) PreventionList(ctx context.Context, request contract.PreventionListRequest) (contract.PreventionListResponse, error) {
+	var response contract.PreventionListResponse
+	err := b.with(ctx, func(ctx context.Context, client apiClient) error {
+		answer, callErr := client.PreventionList(ctx, request)
+		if callErr != nil {
+			return callErr
+		}
+		response = answer
+		return nil
+	})
+	return response, err
+}
+
+func (b pipeBackend) PreventionGet(ctx context.Context, request contract.PreventionGetRequest) (contract.PreventionGetResponse, error) {
+	var response contract.PreventionGetResponse
+	err := b.with(ctx, func(ctx context.Context, client apiClient) error {
+		answer, callErr := client.PreventionGet(ctx, request)
+		if callErr != nil {
+			return callErr
+		}
+		response = answer
+		return nil
+	})
+	return response, err
+}
+
 // runMCP dispatches the three MCP-related commands: serve (default),
 // `install` (register with a known host) and `selftest` (in-process check).
 func runMCP(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
@@ -434,7 +473,11 @@ func runMCPSelftest(stderr io.Writer) int {
 	for _, tool := range listed.Tools {
 		names = append(names, tool.Name)
 	}
-	for _, required := range []string{"err_lookup", "err_search", "err_record", "err_feedback", "err_list", "err_stats", "err_record_solution", "err_set_status", "err_get_issue"} {
+	for _, required := range []string{
+		"err_lookup", "err_search", "err_record", "err_feedback", "err_list", "err_stats",
+		"err_record_solution", "err_set_status", "err_get_issue",
+		"err_prevention_register", "err_prevention_list", "err_prevention_get",
+	} {
 		found := false
 		for _, name := range names {
 			if name == required {
