@@ -177,6 +177,46 @@ func (f *fakeClient) SetStatus(_ context.Context, request contract.SetStatusRequ
 	}, nil
 }
 
+func (f *fakeClient) PreventionAdd(context.Context, contract.PreventionAddRequest) (contract.PreventionAddResponse, error) {
+	f.note(contract.OperationPreventionAdd)
+	if f.err != nil {
+		return contract.PreventionAddResponse{}, f.err
+	}
+	return contract.PreventionAddResponse{SchemaVersion: "v1", Artifact: preventionCLIArtifact(), Version: preventionCLIVersion("draft"), Created: true}, nil
+}
+
+func (f *fakeClient) PreventionVerify(context.Context, contract.PreventionVerifyRequest) (contract.PreventionVerifyResponse, error) {
+	f.note(contract.OperationPreventionVerify)
+	if f.err != nil {
+		return contract.PreventionVerifyResponse{}, f.err
+	}
+	return contract.PreventionVerifyResponse{SchemaVersion: "v1", Verification: preventionCLIVerification(true), Version: preventionCLIVersion("verified")}, nil
+}
+
+func (f *fakeClient) PreventionActivate(context.Context, contract.PreventionActivateRequest) (contract.PreventionActivateResponse, error) {
+	f.note(contract.OperationPreventionActivate)
+	if f.err != nil {
+		return contract.PreventionActivateResponse{}, f.err
+	}
+	return contract.PreventionActivateResponse{SchemaVersion: "v1", Version: preventionCLIVersion("active"), Activated: true}, nil
+}
+
+func (f *fakeClient) PreventionList(context.Context, contract.PreventionListRequest) (contract.PreventionListResponse, error) {
+	f.note(contract.OperationPreventionList)
+	if f.err != nil {
+		return contract.PreventionListResponse{}, f.err
+	}
+	return contract.PreventionListResponse{SchemaVersion: "v1", Items: []contract.PreventionArtifactView{}}, nil
+}
+
+func (f *fakeClient) PreventionGet(context.Context, contract.PreventionGetRequest) (contract.PreventionGetResponse, error) {
+	f.note(contract.OperationPreventionGet)
+	if f.err != nil {
+		return contract.PreventionGetResponse{}, f.err
+	}
+	return contract.PreventionGetResponse{SchemaVersion: "v1", Artifact: preventionCLIArtifact(), Versions: []contract.PreventionVersion{}, Verifications: []contract.PreventionVerification{}}, nil
+}
+
 func (f *fakeClient) Close() error { return nil }
 
 func testEnv(fake *fakeClient) (*cliEnv, *bytes.Buffer, *bytes.Buffer) {

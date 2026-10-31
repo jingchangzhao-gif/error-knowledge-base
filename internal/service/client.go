@@ -118,6 +118,9 @@ func (c *Client) Call(ctx context.Context, operation string, payload any) (json.
 	if response.RequestID != request.RequestID {
 		return nil, fmt.Errorf("the daemon answered request %q instead of %q", response.RequestID, request.RequestID)
 	}
+	if response.Operation != operation {
+		return nil, fmt.Errorf("the daemon answered operation %q instead of %q", response.Operation, operation)
+	}
 	if response.Error != nil {
 		return nil, &CallError{Code: response.Error.Code, Message: response.Error.Message, Retryable: response.Error.Retryable}
 	}
@@ -259,6 +262,84 @@ func (c *Client) GetIssue(ctx context.Context, request contract.GetIssueRequest)
 	var response contract.GetIssueResponse
 	if err := json.Unmarshal(payload, &response); err != nil {
 		return contract.GetIssueResponse{}, fmt.Errorf("decode the get_issue result: %w", err)
+	}
+	return response, nil
+}
+
+// decodePreventionResult decodes and validates one prevention response. The
+// envelope decoder performs the same check; keeping it here also protects tests
+// and future transports that reuse these methods without the pipe envelope.
+func decodePreventionResult(payload json.RawMessage, operation string, target interface{ Validate() error }) error {
+	if err := json.Unmarshal(payload, target); err != nil {
+		return fmt.Errorf("decode the %s result: %w", operation, err)
+	}
+	if err := target.Validate(); err != nil {
+		return fmt.Errorf("validate the %s result: %w", operation, err)
+	}
+	return nil
+}
+
+// PreventionAdd registers artifact metadata and a draft version.
+func (c *Client) PreventionAdd(ctx context.Context, request contract.PreventionAddRequest) (contract.PreventionAddResponse, error) {
+	payload, err := c.Call(ctx, contract.OperationPreventionAdd, request)
+	if err != nil {
+		return contract.PreventionAddResponse{}, err
+	}
+	var response contract.PreventionAddResponse
+	if err := decodePreventionResult(payload, contract.OperationPreventionAdd, &response); err != nil {
+		return contract.PreventionAddResponse{}, err
+	}
+	return response, nil
+}
+
+// PreventionVerify explicitly runs and records one verification command.
+func (c *Client) PreventionVerify(ctx context.Context, request contract.PreventionVerifyRequest) (contract.PreventionVerifyResponse, error) {
+	payload, err := c.Call(ctx, contract.OperationPreventionVerify, request)
+	if err != nil {
+		return contract.PreventionVerifyResponse{}, err
+	}
+	var response contract.PreventionVerifyResponse
+	if err := decodePreventionResult(payload, contract.OperationPreventionVerify, &response); err != nil {
+		return contract.PreventionVerifyResponse{}, err
+	}
+	return response, nil
+}
+
+// PreventionActivate binds a verified version to the current clean Git HEAD.
+func (c *Client) PreventionActivate(ctx context.Context, request contract.PreventionActivateRequest) (contract.PreventionActivateResponse, error) {
+	payload, err := c.Call(ctx, contract.OperationPreventionActivate, request)
+	if err != nil {
+		return contract.PreventionActivateResponse{}, err
+	}
+	var response contract.PreventionActivateResponse
+	if err := decodePreventionResult(payload, contract.OperationPreventionActivate, &response); err != nil {
+		return contract.PreventionActivateResponse{}, err
+	}
+	return response, nil
+}
+
+// PreventionList returns a stable page of prevention artifacts.
+func (c *Client) PreventionList(ctx context.Context, request contract.PreventionListRequest) (contract.PreventionListResponse, error) {
+	payload, err := c.Call(ctx, contract.OperationPreventionList, request)
+	if err != nil {
+		return contract.PreventionListResponse{}, err
+	}
+	var response contract.PreventionListResponse
+	if err := decodePreventionResult(payload, contract.OperationPreventionList, &response); err != nil {
+		return contract.PreventionListResponse{}, err
+	}
+	return response, nil
+}
+
+// PreventionGet returns artifact, version and verification history.
+func (c *Client) PreventionGet(ctx context.Context, request contract.PreventionGetRequest) (contract.PreventionGetResponse, error) {
+	payload, err := c.Call(ctx, contract.OperationPreventionGet, request)
+	if err != nil {
+		return contract.PreventionGetResponse{}, err
+	}
+	var response contract.PreventionGetResponse
+	if err := decodePreventionResult(payload, contract.OperationPreventionGet, &response); err != nil {
+		return contract.PreventionGetResponse{}, err
 	}
 	return response, nil
 }

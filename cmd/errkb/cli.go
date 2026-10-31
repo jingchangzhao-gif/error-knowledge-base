@@ -46,6 +46,11 @@ type apiClient interface {
 	RecordSolution(context.Context, contract.RecordSolutionRequest) (contract.RecordSolutionResponse, error)
 	SetStatus(context.Context, contract.SetStatusRequest) (contract.SetStatusResponse, error)
 	GetIssue(context.Context, contract.GetIssueRequest) (contract.GetIssueResponse, error)
+	PreventionAdd(context.Context, contract.PreventionAddRequest) (contract.PreventionAddResponse, error)
+	PreventionVerify(context.Context, contract.PreventionVerifyRequest) (contract.PreventionVerifyResponse, error)
+	PreventionActivate(context.Context, contract.PreventionActivateRequest) (contract.PreventionActivateResponse, error)
+	PreventionList(context.Context, contract.PreventionListRequest) (contract.PreventionListResponse, error)
+	PreventionGet(context.Context, contract.PreventionGetRequest) (contract.PreventionGetResponse, error)
 	Close() error
 }
 
@@ -73,7 +78,11 @@ func (env *cliEnv) open() (apiClient, int) {
 }
 
 func (env *cliEnv) callContext() (context.Context, context.CancelFunc) {
-	return context.WithTimeout(context.Background(), cliTimeout)
+	return env.callContextWithTimeout(cliTimeout)
+}
+
+func (env *cliEnv) callContextWithTimeout(timeout time.Duration) (context.Context, context.CancelFunc) {
+	return context.WithTimeout(context.Background(), timeout)
 }
 
 // usageError reports a problem with the arguments, without a stack trace.
@@ -168,6 +177,8 @@ func runCommand(command string, args []string, env *cliEnv) int {
 		return runFeedback(args, env)
 	case "stats":
 		return runStats(args, env)
+	case "prevention":
+		return runPrevention(args, env)
 	}
 	fmt.Fprintf(env.stderr, "errkb: unknown command %q\n\n", command)
 	usage(env.stderr)
