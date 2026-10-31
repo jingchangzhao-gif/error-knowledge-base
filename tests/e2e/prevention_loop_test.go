@@ -193,7 +193,7 @@ func TestCLIPreventionLoop(t *testing.T) {
 	if got := countRows(t, conn, `select count(*) from occurrences where issue_id = $1`, issueID); got != 2 {
 		t.Fatalf("issue occurrences after recurrence=%d, want 2", got)
 	}
-	if got := countRows(t, conn, `select count(*) from occurrences where issue_id = $1 and occurred_at > (select activated_at from prevention_artifact_versions where id = $2)`, issueID, added.Version.ArtifactVersionID); got != 1 {
+	if got := countRows(t, conn, `select count(*) from occurrences where issue_id = $1 and created_at > (select activated_at from prevention_artifact_versions where id = $2)`, issueID, added.Version.ArtifactVersionID); got != 1 {
 		t.Fatalf("post-activation recurrence rows=%d, want 1", got)
 	}
 	assertPreventionGitState(t, repo, initialHead, "")
