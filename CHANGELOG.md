@@ -10,6 +10,43 @@ They never claim more than the acceptance records in this repository prove.
 
 ## [Unreleased]
 
+### Added
+
+- **Local prevention loop.** Four repository-backed artifact kinds (regression test,
+  deterministic check, agent instruction and intent) gain immutable content-hash versions,
+  same-project issue links, explicit verification runs and draft/verified/active/deprecated
+  states. Six `errkb prevention` commands cover add, verify, activate, list, show and stats.
+- **Human-controlled execution evidence.** CLI verification hashes a regular repository file
+  before and after a bounded 120-second command, stores redacted bounded evidence and records
+  real failures. Activation requires a matching latest pass and a clean artifact tracked at
+  Git `HEAD`; errkb performs no automatic file or Git writes.
+- **Prevention interfaces.** MCP adds `err_prevention_register`, `err_prevention_list` and
+  `err_prevention_get` (twelve tools total), while executable verify/activate transitions stay
+  CLI-only. The Web toolbox adds a read-only prevention statistics area.
+- **Observed recurrence metrics.** SQL reports distinct artifact/version counts, verification
+  pass ratios, per-issue/version 30-day windows, observing/mature states, all-time recurrence
+  and a nullable mature protection rate. No unobservable `prevented_count` is invented.
+- **Migration 0009.** Adds the four prevention tables, immutability/state constraints and
+  recurrence indexes. Real PostgreSQL tests cover 0007→0009 upgrade, failed 0010 rollback and
+  rejection of unknown future ledgers.
+
+### Changed
+
+- Backup manifests, `pg_restore` verification and empty-database restores now include all four
+  prevention tables and their audit/history rows.
+- Scoped deletion previews, execution, audit details and UI summaries report prevention rows.
+  Project deletion removes the full chain; connector-only, time-only and retention operations
+  preserve active artifacts, and metrics use the remaining real occurrences.
+- Added bilingual prevention guides covering the workflow, Git prerequisites, metrics, privacy,
+  troubleshooting and current interface boundaries.
+
+### Known limitations
+
+- Prevention capabilities are source-level Unreleased changes, not part of v0.1.3. Activation
+  records evidence but does not automatically wire an artifact into CI or a host. MCP register
+  accepts caller-supplied hashes without reading or proving file content; Web prevention views
+  are read-only. Complete PR/CI compatibility and release gates remain required before release.
+
 ## [0.1.3] - 2026-10-25
 
 ### Fixed

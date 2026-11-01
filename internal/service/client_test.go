@@ -178,7 +178,11 @@ func TestClientCallsPreventionOperations(t *testing.T) {
 	if err != nil || get.Artifact.ArtifactID == "" || get.Versions == nil || get.Verifications == nil {
 		t.Fatalf("PreventionGet = %+v, %v", get, err)
 	}
-	want := []string{"prevention_add", "prevention_verify", "prevention_activate", "prevention_list", "prevention_get"}
+	stats, err := client.PreventionStats(ctx, contract.PreventionStatsRequest{SchemaVersion: "v1", IssueID: "issue-1"})
+	if err != nil || stats.Activations == nil || stats.RecurringVersionIDs == nil || stats.MatureProtectionRate != nil || stats.VerificationRuns != 2 {
+		t.Fatalf("PreventionStats = %+v, %v", stats, err)
+	}
+	want := []string{"prevention_add", "prevention_verify", "prevention_activate", "prevention_list", "prevention_get", "prevention_stats"}
 	if got := append([]string(nil), backend.operations...); !equalStrings(got, want) {
 		t.Fatalf("backend saw %v, want %v", got, want)
 	}

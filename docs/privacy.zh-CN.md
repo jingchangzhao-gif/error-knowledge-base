@@ -14,18 +14,19 @@ Error Knowledge Base 的原则是：错误历史保留在产生错误的机器�
 
 ## 保存的数据
 
-| 数据 | 位置 | 说明 |
-| --- | --- | --- |
-| 问题摘要、指纹、分类、项目键、首次/最近出现时间、命中次数 | PostgreSQL `issues` | 指纹是“分类 + 规范化文本”的 12 位十六进制哈希，不包含原文 |
-| 每次失败事件 | PostgreSQL `events` | 保存脱敏样本与规范化消息，不保存原始输出 |
-| 出现记录与环境 | PostgreSQL `occurrences` | 每次重放或重复出现一行，引用已脱敏事件 |
-| 解法、版本、结果 | PostgreSQL `solutions`、`solution_versions`、`outcomes` | 解法写入前必须脱敏；结果参与 `errkb_trust()` 计算 |
-| 检索记录 | PostgreSQL `retrievals` | 查询、候选、匹配原因与耗时 |
-| 通知 | PostgreSQL `notices` | 实际展示的脱敏内容与估算 token 数 |
-| 审计轨迹 | PostgreSQL `audit_log` | 谁修改了什么；追加写保护 |
-| 数据库凭据 | `%LOCALAPPDATA%\errkb\pg\credentials.json` | 安装时生成的密码，仅当前用户可读 |
-| 适配器离线队列 | 连接器状态旁的 `state.json` | 待重放的原始观测，见“已知缺口” |
-| 后台日志 | `%LOCALAPPDATA%\errkb\logs\daemon.log` | 写入前脱敏，按大小轮转 |
+| 数据                                                      | 位置                                                                                                               | 说明                                                                             |
+| --------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------ | -------------------------------------------------------------------------------- |
+| 问题摘要、指纹、分类、项目键、首次/最近出现时间、命中次数 | PostgreSQL `issues`                                                                                                | 指纹是“分类 + 规范化文本”的 12 位十六进制哈希，不包含原文                        |
+| 每次失败事件                                              | PostgreSQL `events`                                                                                                | 保存脱敏样本与规范化消息，不保存原始输出                                         |
+| 出现记录与环境                                            | PostgreSQL `occurrences`                                                                                           | 每次重放或重复出现一行，引用已脱敏事件                                           |
+| 解法、版本、结果                                          | PostgreSQL `solutions`、`solution_versions`、`outcomes`                                                            | 解法写入前必须脱敏；结果参与 `errkb_trust()` 计算                                |
+| 检索记录                                                  | PostgreSQL `retrievals`                                                                                            | 查询、候选、匹配原因与耗时                                                       |
+| 通知                                                      | PostgreSQL `notices`                                                                                               | 实际展示的脱敏内容与估算 token 数                                                |
+| 审计轨迹                                                  | PostgreSQL `audit_log`                                                                                             | 谁修改了什么；追加写保护                                                         |
+| 预防元数据（Unreleased）                                  | PostgreSQL `prevention_artifacts`、`prevention_artifact_versions`、`issue_preventions`、`prevention_verifications` | 仓库相对路径、哈希、Git 提交 ID、脱敏验证元数据/证据；不含产物正文或仓库绝对路径 |
+| 数据库凭据                                                | `%LOCALAPPDATA%\errkb\pg\credentials.json`                                                                         | 安装时生成的密码，仅当前用户可读                                                 |
+| 适配器离线队列                                            | 连接器状态旁的 `state.json`                                                                                        | 待重放的原始观测，见“已知缺口”                                                   |
+| 后台日志                                                  | `%LOCALAPPDATA%\errkb\logs\daemon.log`                                                                             | 写入前脱敏，按大小轮转                                                           |
 
 ## 数据流
 
@@ -49,6 +50,19 @@ Error Knowledge Base 的原则是：错误历史保留在产生错误的机器�
 
 契约会拒绝仍带敏感形态的载荷。若 `ErrorEvent` 看起来仍包含密钥、主目录或请求 ID，它在入库前就会被拒绝。`errkb doctor` 也包含隐私模式检查。
 
+## 预防产物与验证（Unreleased）
+
+CLI 对不超过 **1 MiB** 的仓库普通文件计算哈希；绝对路径、符号链接、`.git`
+穿越和仓库逃逸都会被拒绝。数据库只持久化仓库相对路径和 SHA-256，不保存
+产物正文或仓库绝对路径。激活保存干净且已跟踪的 Git 提交 ID，不保存仓库内容。
+
+验证接收显式 argv 数组，而不是隐式 shell 命令。命令参数和有界
+stdout/stderr 证据在入库前脱敏。环境对象使用固定白名单（`os`、`shell`、
+`go_version`、`git_version`），errkb 不会转储进程环境变量。MCP
+`err_prevention_register` 接收调用方提供的元数据与哈希，不读取文件，因此
+响应不能证明文件内容。验证和激活仍是人工 CLI 决策。备份包含已存储的预防
+元数据和脱敏证据。详见 [prevention.zh-CN.md](prevention.zh-CN.md)。
+
 ## 传输边界
 
 - **Named Pipe（默认）：** `\\.\pipe\errkb`，ACL 只允许当前用户和 SYSTEM；除非显式启用 HTTP，否则不监听 TCP。
@@ -58,11 +72,11 @@ Error Knowledge Base 的原则是：错误历史保留在产生错误的机器�
 
 ## 保留期
 
-| 类别 | 删除内容 | 默认值 |
-| --- | --- | --- |
-| `sample_days` | 清除旧事件的脱敏样本文本，但保留事件行及规范化消息 | 7 天 |
-| `normalized_days` | 删除超过期限的完整事件 | 90 天 |
-| `audit_days` | 删除审计行 | 365 天 |
+| 类别              | 删除内容                                           | 默认值 |
+| ----------------- | -------------------------------------------------- | ------ |
+| `sample_days`     | 清除旧事件的脱敏样本文本，但保留事件行及规范化消息 | 7 天   |
+| `normalized_days` | 删除超过期限的完整事件                             | 90 天  |
+| `audit_days`      | 删除审计行                                         | 365 天 |
 
 期限在 `spec/config.cue` / 配置文件中设置，由 `errkb_purge_retention()`（`db/migrations/0006_retention.sql`）执行。函数会校验非负期限，并分别返回删除数量。
 
@@ -70,7 +84,7 @@ Error Knowledge Base 的原则是：错误历史保留在产生错误的机器�
 
 ## 删除
 
-- `errkb_delete_scope` 可按项目、连接器和/或时间范围删除；先用 `errkb_delete_preview` 显示影响，再在单个事务中删除问题、解法、版本、结果、出现记录、检索、通知和事件。
+- `errkb_delete_scope` 可按项目、连接器和/或时间范围删除；先用 `errkb_delete_preview` 显示影响，再在单个事务中删除问题、解法、版本、结果、出现记录、检索、通知、事件和适用的预防链。仅按连接器、仅按时间删除和保留策略会保留 active 预防产物；项目删除会移除该项目产物及其全部 issue 关联。
 - 删除会写入 `audit_log` 的 `delete.scope` 记录，包含数量与操作人。
 - `audit_log` 只允许追加：触发器阻止直接 `DELETE` 或 `TRUNCATE`，只有保留期流程可以清理审计行。
 - 卸载器会询问保留或删除 PostgreSQL 数据。选择删除会移除专用集群目录和凭据；选择保留则供重装使用。

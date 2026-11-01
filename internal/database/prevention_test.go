@@ -9,6 +9,7 @@ import (
 	"sync"
 	"sync/atomic"
 	"testing"
+	"time"
 
 	"github.com/jackc/pgx/v5"
 
@@ -429,5 +430,193 @@ func TestPreventionListAndGetHaveStablePagesAndArrays(t *testing.T) {
 	}
 	if _, err := database.GetPrevention(context.Background(), conn, "11111111-1111-4111-8111-111111111111"); !errors.Is(err, pgx.ErrNoRows) {
 		t.Fatalf("missing prevention detail = %v, want not found", err)
+	}
+}
+
+func preventionOccurrence(t *testing.T, conn *pgx.Conn, issueID string, occurredAt time.Time) {
+	t.Helper()
+	ctx := context.Background()
+	var projectKey, connectorID, eventID string
+	if err := conn.QueryRow(ctx, `select project_key from issues where id = $1`, issueID).Scan(&projectKey); err != nil {
+		t.Fatalf("read occurrence issue: %v", err)
+	}
+	name := fmt.Sprintf("prevention-stats-%d", preventionIssueSequence.Add(1))
+	if err := conn.QueryRow(ctx, `insert into connectors (name, channel, source, actor) values ($1, 'A', 'test', 'test') returning id`, name).Scan(&connectorID); err != nil {
+		t.Fatalf("insert occurrence connector: %v", err)
+	}
+	fingerprint := fmt.Sprintf("%012x", preventionIssueSequence.Add(1))
+	if err := conn.QueryRow(ctx, `
+		insert into events (connector_id, observed_at, channel, category, severity, headline,
+			normalized_message, redacted_sample, os, project_key, fingerprint, evidence, confidence, source, actor)
+		values ($1, $2, 'A', 'tool', 'error', 'stats occurrence', 'stats occurrence', 'stats occurrence',
+			'windows', $3, $4, 'stats', 1, 'test', 'test') returning event_id
+	`, connectorID, occurredAt, projectKey, fingerprint).Scan(&eventID); err != nil {
+		t.Fatalf("insert occurrence event: %v", err)
+	}
+	if _, err := conn.Exec(ctx, `
+		insert into occurrences (issue_id, event_id, connector_id, project_key, environment, occurred_at, source, actor)
+		values ($1, $2, $3, $4, '{}'::jsonb, $5, 'test', 'test')
+	`, issueID, eventID, connectorID, projectKey, occurredAt); err != nil {
+		t.Fatalf("insert occurrence: %v", err)
+	}
+}
+
+func preventionActiveAt(t *testing.T, conn *pgx.Conn, registration database.PreventionRegistration, activatedAt time.Time) database.PreventionRegistrationResult {
+	t.Helper()
+	registered := registerPrevention(t, conn, registration)
+	if _, err := database.RecordPreventionVerification(context.Background(), conn, database.PreventionVerificationInput{
+		ArtifactVersionID: registered.Version.ArtifactVersionID, Command: []string{"go", "test"},
+		ContentSHA256: registration.ContentSHA256, Passed: true,
+	}); err != nil {
+		t.Fatalf("verify prevention fixture: %v", err)
+	}
+	activatePrevention(t, conn, registered.Version.ArtifactVersionID, preventionCommitA)
+	if _, err := conn.Exec(context.Background(), `update prevention_artifact_versions set activated_at = $2 where id = $1`, registered.Version.ArtifactVersionID, activatedAt); err != nil {
+		t.Fatalf("set prevention activation time: %v", err)
+	}
+	return registered
+}
+
+func TestPreventionStatsAtWindowsMaturityAndFilters(t *testing.T) {
+	conn, _ := preventionSchema(t)
+	ctx := context.Background()
+	now := time.Date(2026, 10, 30, 12, 0, 0, 0, time.UTC)
+	firstActivation := now.Add(-45 * 24 * time.Hour)
+	secondActivation := now.Add(-30 * 24 * time.Hour)
+	firstIssue := preventionIssue(t, conn, "proj-a", "resolved")
+	secondIssue := preventionIssue(t, conn, "proj-a", "resolved")
+	if _, err := conn.Exec(ctx, `update issues set first_seen = $2 where id = $1`, firstIssue, firstActivation.Add(-36*time.Hour)); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := conn.Exec(ctx, `update issues set first_seen = $2 where id = $1`, secondIssue, firstActivation.Add(time.Hour)); err != nil {
+		t.Fatal(err)
+	}
+	first := registerPrevention(t, conn, preventionRegistration(firstIssue))
+	linked := preventionRegistration(secondIssue)
+	registerPrevention(t, conn, linked)
+	verifyPrevention(t, conn, first.Version.ArtifactVersionID, true)
+	verifyPrevention(t, conn, first.Version.ArtifactVersionID, false)
+	verifyPrevention(t, conn, first.Version.ArtifactVersionID, true)
+	activatePrevention(t, conn, first.Version.ArtifactVersionID, preventionCommitA)
+	changed := preventionRegistration(firstIssue)
+	changed.ContentSHA256 = preventionHashB
+	second := registerPrevention(t, conn, changed)
+	if _, err := database.RecordPreventionVerification(ctx, conn, database.PreventionVerificationInput{
+		ArtifactVersionID: second.Version.ArtifactVersionID, Command: []string{"go", "test"},
+		ContentSHA256: preventionHashB, Passed: true,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	activatePrevention(t, conn, second.Version.ArtifactVersionID, preventionCommitB)
+	if _, err := conn.Exec(ctx, `update prevention_artifact_versions set activated_at = case id when $1 then $3::timestamptz when $2 then $4::timestamptz end where id in ($1, $2)`,
+		first.Version.ArtifactVersionID, second.Version.ArtifactVersionID, firstActivation, secondActivation); err != nil {
+		t.Fatal(err)
+	}
+	for _, occurredAt := range []time.Time{
+		firstActivation.Add(-30 * 24 * time.Hour), firstActivation, firstActivation.Add(30 * 24 * time.Hour),
+		secondActivation.Add(-30 * 24 * time.Hour), secondActivation.Add(-time.Hour), secondActivation,
+		now, now.Add(time.Hour),
+	} {
+		preventionOccurrence(t, conn, firstIssue, occurredAt)
+	}
+
+	matureZeroIssue := preventionIssue(t, conn, "proj-b", "resolved")
+	matureZeroRegistration := preventionRegistration(matureZeroIssue)
+	matureZeroRegistration.ArtifactPath = "checks/mature.sh"
+	matureZero := preventionActiveAt(t, conn, matureZeroRegistration, now.Add(-31*24*time.Hour))
+	observingIssue := preventionIssue(t, conn, "proj-a", "resolved")
+	observingRegistration := preventionRegistration(observingIssue)
+	observingRegistration.ArtifactPath = "checks/observing.sh"
+	preventionActiveAt(t, conn, observingRegistration, now.Add(-23*time.Hour))
+	if _, err := conn.Exec(ctx, `update issues set first_seen = $2 where id = $1`, observingIssue, now.Add(-33*time.Hour)); err != nil {
+		t.Fatal(err)
+	}
+
+	stats, err := database.PreventionStatsAt(ctx, conn, database.PreventionFilter{}, now)
+	if err != nil {
+		t.Fatalf("prevention stats: %v", err)
+	}
+	if stats.VerificationRuns != 6 || stats.VerificationPassed != 5 || stats.VerificationPassRate != float64(5)/6 {
+		t.Fatalf("verification stats = runs %d passed %d rate %v", stats.VerificationRuns, stats.VerificationPassed, stats.VerificationPassRate)
+	}
+	byStatus := map[string]int64{}
+	for _, count := range stats.ByStatus {
+		byStatus[count.Name] = count.Count
+	}
+	if len(byStatus) != 2 || byStatus["active"] != 3 || byStatus["deprecated"] != 1 {
+		t.Fatalf("status counts = %+v", stats.ByStatus)
+	}
+	if len(stats.ByKind) != 1 || stats.ByKind[0].Name != "regression_test" || stats.ByKind[0].Count != 3 {
+		t.Fatalf("kind counts = %+v", stats.ByKind)
+	}
+	if len(stats.Activations) != 6 || stats.MatureActivations != 5 || stats.MatureZeroRecurrence != 3 || stats.MatureProtectionRate == nil || *stats.MatureProtectionRate != float64(3)/5 {
+		t.Fatalf("maturity stats = activations %d mature %d zero %d rate %v", len(stats.Activations), stats.MatureActivations, stats.MatureZeroRecurrence, stats.MatureProtectionRate)
+	}
+	if len(stats.RecurringVersionIDs) != 1 || stats.RecurringVersionIDs[0] != second.Version.ArtifactVersionID {
+		t.Fatalf("recurring active versions = %v, want only %s", stats.RecurringVersionIDs, second.Version.ArtifactVersionID)
+	}
+	activation := func(versionID, issueID string) database.PreventionActivationStats {
+		t.Helper()
+		for _, item := range stats.Activations {
+			if item.ArtifactVersionID == versionID && item.IssueID == issueID {
+				return item
+			}
+		}
+		t.Fatalf("missing activation %s/%s in %+v", versionID, issueID, stats.Activations)
+		return database.PreventionActivationStats{}
+	}
+	oldFirst := activation(first.Version.ArtifactVersionID, firstIssue)
+	if oldFirst.Status != "deprecated" || oldFirst.FirstSeenToActivationMS != int64((36*time.Hour)/time.Millisecond) ||
+		oldFirst.BeforeCount != 2 || oldFirst.AfterCount != 3 || oldFirst.RecurrenceCount != 5 || oldFirst.BeforeDays != 1 || oldFirst.AfterDays != 30 || oldFirst.ObservationStatus != "mature" {
+		t.Fatalf("old activation windows = %+v", oldFirst)
+	}
+	newFirst := activation(second.Version.ArtifactVersionID, firstIssue)
+	if newFirst.BeforeCount != 3 || newFirst.AfterCount != 2 || newFirst.RecurrenceCount != 3 || newFirst.ObservationStatus != "mature" {
+		t.Fatalf("new activation windows = %+v", newFirst)
+	}
+	oldSecond := activation(first.Version.ArtifactVersionID, secondIssue)
+	if oldSecond.FirstSeenToActivationMS != 0 || oldSecond.BeforeDays != 0 || oldSecond.RecurrenceCount != 0 {
+		t.Fatalf("second issue activation = %+v", oldSecond)
+	}
+	var observingStats database.PreventionActivationStats
+	for _, item := range stats.Activations {
+		if item.IssueID == observingIssue {
+			observingStats = item
+		}
+	}
+	if observingStats.BeforeDays != 0 || observingStats.AfterDays != 0 || observingStats.ObservationStatus != "observing" {
+		t.Fatalf("observing activation = %+v", observingStats)
+	}
+
+	issueStats, err := database.PreventionStatsAt(ctx, conn, database.PreventionFilter{IssueID: firstIssue}, now)
+	if err != nil || issueStats.VerificationRuns != 4 || len(issueStats.Activations) != 2 || len(issueStats.ByKind) != 1 || issueStats.ByKind[0].Count != 1 || issueStats.MatureActivations != 2 || issueStats.MatureZeroRecurrence != 0 || issueStats.MatureProtectionRate == nil || *issueStats.MatureProtectionRate != 0 {
+		t.Fatalf("issue-filtered stats = %+v, %v", issueStats, err)
+	}
+	secondIssueStats, err := database.PreventionStatsAt(ctx, conn, database.PreventionFilter{IssueID: secondIssue}, now)
+	if err != nil || len(secondIssueStats.Activations) != 2 || secondIssueStats.MatureZeroRecurrence != 2 || secondIssueStats.MatureProtectionRate == nil || *secondIssueStats.MatureProtectionRate != 1 || len(secondIssueStats.RecurringVersionIDs) != 0 {
+		t.Fatalf("second issue stats = %+v, %v", secondIssueStats, err)
+	}
+	projectStats, err := database.PreventionStatsAt(ctx, conn, database.PreventionFilter{ProjectKey: "proj-b"}, now)
+	if err != nil || projectStats.VerificationRuns != 1 || len(projectStats.Activations) != 1 || projectStats.Activations[0].ArtifactID != matureZero.Artifact.ArtifactID || projectStats.MatureProtectionRate == nil || *projectStats.MatureProtectionRate != 1 {
+		t.Fatalf("project-filtered stats = %+v, %v", projectStats, err)
+	}
+}
+
+func TestPreventionStatsEmptyUsesZeroRatesAndRequiredArrays(t *testing.T) {
+	conn, _ := preventionSchema(t)
+	now := time.Date(2026, 10, 30, 12, 0, 0, 0, time.UTC)
+	stats, err := database.PreventionStatsAt(context.Background(), conn, database.PreventionFilter{ProjectKey: "missing"}, now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if stats.ByStatus == nil || stats.ByKind == nil || stats.Activations == nil || stats.RecurringVersionIDs == nil || len(stats.ByStatus) != 0 || len(stats.Activations) != 0 {
+		t.Fatalf("empty stats arrays = %+v", stats)
+	}
+	if stats.VerificationRuns != 0 || stats.VerificationPassRate != 0 || stats.MatureActivations != 0 || stats.MatureProtectionRate != nil {
+		t.Fatalf("empty stats rates = %+v", stats)
+	}
+	current, err := database.PreventionStats(context.Background(), conn, database.PreventionFilter{})
+	if err != nil || current.MatureProtectionRate != nil {
+		t.Fatalf("current-time empty stats = %+v, %v", current, err)
 	}
 }

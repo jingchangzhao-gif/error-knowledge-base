@@ -6,6 +6,7 @@ import (
 	"errors"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"strings"
 	"testing"
 
@@ -139,5 +140,59 @@ func TestPreventionRoutesAreReadOnlyAndKeepSecurityHeaders(t *testing.T) {
 	csp := response.Header().Get("Content-Security-Policy")
 	if !strings.Contains(csp, "form-action 'none'") || !strings.Contains(csp, "default-src 'none'") {
 		t.Fatalf("CSP changed: %q", csp)
+	}
+}
+
+func TestPreventionStatsEndpointIsScopedAndReadOnly(t *testing.T) {
+	var seen contract.PreventionStatsRequest
+	server := detailServer(t, nil)
+	server.EnablePreventionStats(func(_ context.Context, request contract.PreventionStatsRequest) (contract.PreventionStatsResponse, error) {
+		seen = request
+		return contract.PreventionStatsResponse{
+			SchemaVersion: "v1", ByStatus: []contract.PreventionCount{}, ByKind: []contract.PreventionCount{},
+			Activations: []contract.PreventionActivationStats{{
+				IssueID: preventionWebIssueID, ArtifactID: "artifact-1", ArtifactVersionID: "version-1",
+				ActivatedAt: "2026-10-30T00:01:00Z", CommitSHA: strings.Repeat("1", 40), Status: "active",
+				ObservationStatus: "observing",
+			}},
+			MatureProtectionRate: nil, RecurringVersionIDs: []string{},
+		}, nil
+	})
+	response := preventionRequest(t, server, http.MethodGet, "/api/preventions/stats?project=demo&issue="+preventionWebIssueID, true)
+	if response.Code != http.StatusOK || seen.ProjectKey != "demo" || seen.IssueID != preventionWebIssueID {
+		t.Fatalf("status = %d, request = %+v, body = %s", response.Code, seen, response.Body.String())
+	}
+	var payload contract.PreventionStatsResponse
+	if err := json.Unmarshal(response.Body.Bytes(), &payload); err != nil || payload.Validate() != nil || payload.MatureProtectionRate != nil {
+		t.Fatalf("stats payload = %+v, %v", payload, err)
+	}
+	if strings.Contains(response.Body.String(), "prevented_count") {
+		t.Fatalf("response invented prevented count: %s", response.Body.String())
+	}
+	if response := preventionRequest(t, server, http.MethodGet, "/api/preventions/stats", false); response.Code != http.StatusUnauthorized {
+		t.Fatalf("without token: status = %d, want 401", response.Code)
+	}
+	if response := preventionRequest(t, server, http.MethodPost, "/api/preventions/stats", true); response.Code != http.StatusMethodNotAllowed {
+		t.Fatalf("POST status = %d, want 405", response.Code)
+	}
+	unconfigured := detailServer(t, nil)
+	if response := preventionRequest(t, unconfigured, http.MethodGet, "/api/preventions/stats", true); response.Code != http.StatusServiceUnavailable {
+		t.Fatalf("without stats reader: status = %d, want 503", response.Code)
+	}
+}
+
+func TestPreventionStatsAssetsExplainObservationLimits(t *testing.T) {
+	source, err := os.ReadFile("assets/app.js")
+	if err != nil {
+		t.Fatal(err)
+	}
+	text := string(source)
+	for _, required := range []string{"renderPreventionStats", "/api/preventions/stats", "暂无成熟记录", "观察中", "recurrence_count", "before_days", "after_days"} {
+		if !strings.Contains(text, required) {
+			t.Fatalf("statistics assets lack %q", required)
+		}
+	}
+	if strings.Contains(text, "prevented"+"_count") {
+		t.Fatal("statistics assets must not invent prevented error counts")
 	}
 }

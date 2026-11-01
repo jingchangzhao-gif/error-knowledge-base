@@ -14,18 +14,19 @@ The Error Knowledge Base is built to keep a failure history on the machine that 
 
 ## What is stored
 
-| Data | Where | Notes |
-| --- | --- | --- |
-| Issue summary, fingerprint, category, project key, first/last seen, hit count | PostgreSQL `issues` | The fingerprint is a 12-hex hash of category + normalized text, not the text itself |
-| Events (one row per recorded failure) | PostgreSQL `events` | Carries the redacted sample and the normalized message; the raw output is not stored |
-| Occurrences, environment | PostgreSQL `occurrences` | One row per replay or repeat, with the redacted event reference |
-| Solutions, versions, outcomes | PostgreSQL `solutions`, `solution_versions`, `outcomes` | Fix text must already be redacted; outcomes feed `errkb_trust()` |
-| Retrievals | PostgreSQL `retrievals` | The query, the candidate, the match reason and the measured duration |
-| Notices | PostgreSQL `notices` | What was shown (redacted), with an estimated token count |
-| Audit trail | PostgreSQL `audit_log` | Who changed what; append-only guards |
-| Cluster credentials | `%LOCALAPPDATA%\errkb\pg\credentials.json` | Generated password, owner-only ACL |
-| Adapter offline queue | `state.json` next to the connector state | Raw observations pending replay (see "Known gaps") |
-| Daemon log | `%LOCALAPPDATA%\errkb\logs\daemon.log` | Redacted before writing; rotated by size |
+| Data                                                                          | Where                                                                                                              | Notes                                                                                                                                       |
+| ----------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------- |
+| Issue summary, fingerprint, category, project key, first/last seen, hit count | PostgreSQL `issues`                                                                                                | The fingerprint is a 12-hex hash of category + normalized text, not the text itself                                                         |
+| Events (one row per recorded failure)                                         | PostgreSQL `events`                                                                                                | Carries the redacted sample and the normalized message; the raw output is not stored                                                        |
+| Occurrences, environment                                                      | PostgreSQL `occurrences`                                                                                           | One row per replay or repeat, with the redacted event reference                                                                             |
+| Solutions, versions, outcomes                                                 | PostgreSQL `solutions`, `solution_versions`, `outcomes`                                                            | Fix text must already be redacted; outcomes feed `errkb_trust()`                                                                            |
+| Retrievals                                                                    | PostgreSQL `retrievals`                                                                                            | The query, the candidate, the match reason and the measured duration                                                                        |
+| Notices                                                                       | PostgreSQL `notices`                                                                                               | What was shown (redacted), with an estimated token count                                                                                    |
+| Audit trail                                                                   | PostgreSQL `audit_log`                                                                                             | Who changed what; append-only guards                                                                                                        |
+| Prevention metadata (Unreleased)                                              | PostgreSQL `prevention_artifacts`, `prevention_artifact_versions`, `issue_preventions`, `prevention_verifications` | Repository-relative paths, hashes, Git commit IDs, redacted verification metadata/evidence; no artifact bodies or repository absolute paths |
+| Cluster credentials                                                           | `%LOCALAPPDATA%\errkb\pg\credentials.json`                                                                         | Generated password, owner-only ACL                                                                                                          |
+| Adapter offline queue                                                         | `state.json` next to the connector state                                                                           | Raw observations pending replay (see "Known gaps")                                                                                          |
+| Daemon log                                                                    | `%LOCALAPPDATA%\errkb\logs\daemon.log`                                                                             | Redacted before writing; rotated by size                                                                                                    |
 
 ## Data flow
 
@@ -58,6 +59,23 @@ still looks like it carries a key, a home path or a request id is refused before
 the database. `errkb doctor` includes a privacy-pattern check that reports whether the
 running rules still detect the known shapes.
 
+## Prevention artifacts and verification (Unreleased)
+
+The CLI hashes a regular repository file of at most **1 MiB**; absolute paths,
+symbolic links, `.git` traversal and repository escapes are rejected. Only the
+repository-relative path and SHA-256 are persisted, never the artifact body or
+repository absolute path. Activation stores the clean tracked Git commit ID, not
+repository contents.
+
+Verification receives an explicit argv array, not an implicit shell command.
+Command arguments and bounded stdout/stderr evidence are redacted before storage.
+The environment object is a fixed allowlist (`os`, `shell`, `go_version`,
+`git_version`); errkb does not dump process environment variables. MCP
+`err_prevention_register` accepts caller-supplied metadata and a hash without
+reading the file, so its response is not proof of file content. Verification and
+activation remain human CLI decisions. Backups include the stored prevention
+metadata and redacted evidence. See [prevention.md](prevention.md).
+
 ## Transport
 
 - **Named Pipe (default).** `\\.\pipe\errkb`, owner-only ACL (`D:P(A;;GA;;;<user>)(A;;GA;;;SY)`). No TCP listener is opened unless HTTP is enabled.
@@ -69,11 +87,11 @@ running rules still detect the known shapes.
 
 The knowledge base has three independent retention classes:
 
-| Class | What it removes | Default |
-| --- | --- | --- |
-| `sample_days` | The redacted sample text on old events, while keeping the event row and its normalized message | 7 days |
-| `normalized_days` | Whole events older than this | 90 days |
-| `audit_days` | Audit rows | 365 days |
+| Class             | What it removes                                                                                | Default  |
+| ----------------- | ---------------------------------------------------------------------------------------------- | -------- |
+| `sample_days`     | The redacted sample text on old events, while keeping the event row and its normalized message | 7 days   |
+| `normalized_days` | Whole events older than this                                                                   | 90 days  |
+| `audit_days`      | Audit rows                                                                                     | 365 days |
 
 The periods are configured in `spec/config.cue` / the config file and applied by
 `errkb_purge_retention()` (see `db/migrations/0006_retention.sql`). The function validates
@@ -88,8 +106,10 @@ pass.
 
 - Scoped deletion (by project, connector and/or before a timestamp) is available through
   `errkb_delete_scope`: it previews the row counts (`errkb_delete_preview`), then deletes
-  issues, solutions, versions, outcomes, occurrences, retrievals, notices and events in one
-  transaction. A preview makes the impact visible before anything changes.
+  issues, solutions, versions, outcomes, occurrences, retrievals, notices, events and the
+  applicable prevention chain in one transaction. A preview makes the impact visible before
+  anything changes. Connector-only, time-only and retention passes preserve active prevention
+  artifacts; project deletion removes that project's artifacts and all of their issue links.
 - The deletion writes an `audit_log` row (`delete.scope`) with the counts and the operator.
 - `audit_log` is append-only: direct `DELETE` or `TRUNCATE` is blocked by triggers; only the
   retention path may remove audit rows.

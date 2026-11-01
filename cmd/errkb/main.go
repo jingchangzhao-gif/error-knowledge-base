@@ -42,7 +42,7 @@ Commands:
   list                   list issues or solutions
   feedback               record an outcome for a solution version
   stats                  knowledge-base totals and timings
-  prevention add|verify|activate|list|show
+  prevention add|verify|activate|list|show|stats
                          register, verify, activate and inspect preventions
   run -- <command>       run a command and look up its known fix
   tail --file <path>     follow a log file and record its failures

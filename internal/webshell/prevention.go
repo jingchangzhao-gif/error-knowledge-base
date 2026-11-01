@@ -12,6 +12,14 @@ import (
 // not connect to PostgreSQL or reproduce artifact filtering and state rules.
 type PreventionListFunc func(ctx context.Context, request contract.PreventionListRequest) (contract.PreventionListResponse, error)
 
+// PreventionStatsFunc performs the daemon-side aggregate read.
+type PreventionStatsFunc func(ctx context.Context, request contract.PreventionStatsRequest) (contract.PreventionStatsResponse, error)
+
+// EnablePreventionStats wires the optional read-only aggregate projection.
+func (s *Server) EnablePreventionStats(stats PreventionStatsFunc) {
+	s.preventionStats = stats
+}
+
 // EnablePreventions adds the optional read-only prevention projection without
 // changing NewWithDetail or enabling any verification, activation or writes.
 func (s *Server) EnablePreventions(list PreventionListFunc) {
@@ -40,6 +48,29 @@ func (s *Server) servePreventions(w http.ResponseWriter, r *http.Request) {
 	})
 	if err != nil {
 		writeError(w, http.StatusBadGateway, "unavailable", "the errkb core is not reachable")
+		return
+	}
+	writeJSON(w, http.StatusOK, response)
+}
+
+// servePreventionStats exposes only project/issue filters; observation time is
+// always selected by the daemon and cannot be forged with an as_of parameter.
+func (s *Server) servePreventionStats(w http.ResponseWriter, r *http.Request) {
+	if !s.authorized(r) {
+		writeError(w, http.StatusUnauthorized, "invalid_request", "missing or invalid token")
+		return
+	}
+	if s.preventionStats == nil {
+		writeError(w, http.StatusServiceUnavailable, "unavailable", "prevention statistics are not wired")
+		return
+	}
+	response, err := s.preventionStats(r.Context(), contract.PreventionStatsRequest{
+		SchemaVersion: contract.PreventionSchemaVersion,
+		ProjectKey:    strings.TrimSpace(r.URL.Query().Get("project")),
+		IssueID:       strings.TrimSpace(r.URL.Query().Get("issue")),
+	})
+	if err != nil {
+		writeError(w, http.StatusBadGateway, "unavailable", "the prevention statistics could not be read")
 		return
 	}
 	writeJSON(w, http.StatusOK, response)

@@ -676,3 +676,187 @@ func scanPreventionVerification(rows pgx.Rows) (PreventionVerification, error) {
 	}
 	return verification, nil
 }
+
+// PreventionCount is one grouped count in the prevention statistics read model.
+type PreventionCount struct {
+	Name  string
+	Count int64
+}
+
+// PreventionActivationStats observes one activated version for one linked issue.
+type PreventionActivationStats struct {
+	IssueID                 string
+	ArtifactID              string
+	ArtifactVersionID       string
+	ActivatedAt             time.Time
+	CommitSHA               string
+	Status                  string
+	FirstSeenToActivationMS int64
+	RecurrenceCount         int64
+	BeforeCount             int64
+	AfterCount              int64
+	BeforeDays              int
+	AfterDays               int
+	ObservationStatus       string
+}
+
+// PreventionStatsSummary contains only observed counts and nullable mature rates.
+type PreventionStatsSummary struct {
+	ByStatus             []PreventionCount
+	ByKind               []PreventionCount
+	VerificationRuns     int64
+	VerificationPassed   int64
+	VerificationPassRate float64
+	Activations          []PreventionActivationStats
+	MatureActivations    int64
+	MatureZeroRecurrence int64
+	MatureProtectionRate *float64
+	RecurringVersionIDs  []string
+}
+
+func preventionStatsScope(filter PreventionFilter, issueColumn string) (string, []any) {
+	conditions := []string{}
+	arguments := []any{}
+	if filter.ProjectKey != "" {
+		arguments = append(arguments, filter.ProjectKey)
+		conditions = append(conditions, fmt.Sprintf("a.project_key = $%d", len(arguments)))
+	}
+	if filter.IssueID != "" {
+		arguments = append(arguments, filter.IssueID)
+		if issueColumn != "" {
+			conditions = append(conditions, fmt.Sprintf("%s = $%d", issueColumn, len(arguments)))
+		} else {
+			conditions = append(conditions, fmt.Sprintf("exists(select 1 from issue_preventions scoped where scoped.artifact_id = a.id and scoped.issue_id = $%d)", len(arguments)))
+		}
+	}
+	if len(conditions) == 0 {
+		return "", arguments
+	}
+	return " where " + strings.Join(conditions, " and "), arguments
+}
+
+// PreventionStats reads statistics at the server's current UTC time.
+func PreventionStats(ctx context.Context, conn *pgx.Conn, filter PreventionFilter) (PreventionStatsSummary, error) {
+	return PreventionStatsAt(ctx, conn, filter, time.Now().UTC())
+}
+
+// PreventionStatsAt aggregates stored evidence at a fixed time for deterministic
+// tests. It never infers prevented errors or accepts an as_of wire parameter.
+func PreventionStatsAt(ctx context.Context, conn *pgx.Conn, filter PreventionFilter, now time.Time) (PreventionStatsSummary, error) {
+	now = now.UTC()
+	stats := PreventionStatsSummary{
+		ByStatus: []PreventionCount{}, ByKind: []PreventionCount{},
+		Activations: []PreventionActivationStats{}, RecurringVersionIDs: []string{},
+	}
+	where, arguments := preventionStatsScope(filter, "")
+	rows, err := conn.Query(ctx, `select a.kind, count(*) from prevention_artifacts a`+where+` group by a.kind order by a.kind`, arguments...)
+	if err != nil {
+		return PreventionStatsSummary{}, fmt.Errorf("prevention stats by kind: %w", err)
+	}
+	for rows.Next() {
+		var count PreventionCount
+		if err := rows.Scan(&count.Name, &count.Count); err != nil {
+			rows.Close()
+			return PreventionStatsSummary{}, fmt.Errorf("prevention stats by kind: scan: %w", err)
+		}
+		stats.ByKind = append(stats.ByKind, count)
+	}
+	rows.Close()
+	if err := rows.Err(); err != nil {
+		return PreventionStatsSummary{}, fmt.Errorf("prevention stats by kind: rows: %w", err)
+	}
+
+	rows, err = conn.Query(ctx, `select v.status, count(*) from prevention_artifact_versions v join prevention_artifacts a on a.id = v.artifact_id`+where+` group by v.status order by v.status`, arguments...)
+	if err != nil {
+		return PreventionStatsSummary{}, fmt.Errorf("prevention stats by status: %w", err)
+	}
+	for rows.Next() {
+		var count PreventionCount
+		if err := rows.Scan(&count.Name, &count.Count); err != nil {
+			rows.Close()
+			return PreventionStatsSummary{}, fmt.Errorf("prevention stats by status: scan: %w", err)
+		}
+		stats.ByStatus = append(stats.ByStatus, count)
+	}
+	rows.Close()
+	if err := rows.Err(); err != nil {
+		return PreventionStatsSummary{}, fmt.Errorf("prevention stats by status: rows: %w", err)
+	}
+
+	if err := conn.QueryRow(ctx, `select count(*), count(*) filter (where r.passed)
+		from prevention_verifications r
+		join prevention_artifact_versions v on v.id = r.artifact_version_id
+		join prevention_artifacts a on a.id = v.artifact_id`+where, arguments...).Scan(&stats.VerificationRuns, &stats.VerificationPassed); err != nil {
+		return PreventionStatsSummary{}, fmt.Errorf("prevention stats verifications: %w", err)
+	}
+	if stats.VerificationRuns > 0 {
+		stats.VerificationPassRate = float64(stats.VerificationPassed) / float64(stats.VerificationRuns)
+	}
+
+	activationWhere, activationArguments := preventionStatsScope(filter, "ip.issue_id")
+	rows, err = conn.Query(ctx, `
+		select ip.issue_id, a.id, v.id, v.activated_at, v.commit_sha, v.status, i.first_seen,
+			o.recurrence_count, o.before_count, o.after_count
+		from prevention_artifact_versions v
+		join prevention_artifacts a on a.id = v.artifact_id
+		join issue_preventions ip on ip.artifact_id = a.id
+		join issues i on i.id = ip.issue_id
+		left join lateral (
+			select count(*) filter (where o.occurred_at > v.activated_at) as recurrence_count,
+				count(*) filter (where o.occurred_at >= v.activated_at - 30 * interval '24 hours' and o.occurred_at < v.activated_at) as before_count,
+				count(*) filter (where o.occurred_at > v.activated_at and o.occurred_at <= v.activated_at + 30 * interval '24 hours') as after_count
+			from occurrences o where o.issue_id = ip.issue_id
+		) o on true
+	`+activationWhere+` and v.activated_at is not null order by v.activated_at, v.id, ip.issue_id`, activationArguments...)
+	if err != nil {
+		return PreventionStatsSummary{}, fmt.Errorf("prevention stats activations: %w", err)
+	}
+	for rows.Next() {
+		item := PreventionActivationStats{}
+		var firstSeen time.Time
+		if err := rows.Scan(&item.IssueID, &item.ArtifactID, &item.ArtifactVersionID, &item.ActivatedAt,
+			&item.CommitSHA, &item.Status, &firstSeen, &item.RecurrenceCount, &item.BeforeCount, &item.AfterCount); err != nil {
+			rows.Close()
+			return PreventionStatsSummary{}, fmt.Errorf("prevention stats activations: scan: %w", err)
+		}
+		item.ActivatedAt = item.ActivatedAt.UTC()
+		item.FirstSeenToActivationMS = item.ActivatedAt.Sub(firstSeen).Milliseconds()
+		if item.FirstSeenToActivationMS < 0 {
+			item.FirstSeenToActivationMS = 0
+		}
+		item.BeforeDays = preventionObservationDays(item.ActivatedAt.Sub(firstSeen))
+		item.AfterDays = preventionObservationDays(now.Sub(item.ActivatedAt))
+		item.ObservationStatus = "observing"
+		if item.AfterDays == 30 {
+			item.ObservationStatus = "mature"
+			stats.MatureActivations++
+			if item.AfterCount == 0 {
+				stats.MatureZeroRecurrence++
+			}
+		}
+		if item.Status == "active" && item.RecurrenceCount > 0 {
+			stats.RecurringVersionIDs = append(stats.RecurringVersionIDs, item.ArtifactVersionID)
+		}
+		stats.Activations = append(stats.Activations, item)
+	}
+	rows.Close()
+	if err := rows.Err(); err != nil {
+		return PreventionStatsSummary{}, fmt.Errorf("prevention stats activations: rows: %w", err)
+	}
+	if stats.MatureActivations > 0 {
+		rate := float64(stats.MatureZeroRecurrence) / float64(stats.MatureActivations)
+		stats.MatureProtectionRate = &rate
+	}
+	return stats, nil
+}
+
+func preventionObservationDays(duration time.Duration) int {
+	days := int(duration / (24 * time.Hour))
+	if days < 0 {
+		return 0
+	}
+	if days > 30 {
+		return 30
+	}
+	return days
+}

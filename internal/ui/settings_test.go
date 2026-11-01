@@ -459,12 +459,32 @@ func TestRetentionPassNeedsConfirmation(t *testing.T) {
 
 func TestFormatDeleteCounts(t *testing.T) {
 	t.Parallel()
-	counts := database.DeleteCounts{Issues: 2, Occurrences: 5, Events: 5, SolutionVersions: 1}
+	counts := database.DeleteCounts{
+		Issues: 2, Occurrences: 5, Events: 5, SolutionVersions: 1,
+		PreventionArtifacts: 2, PreventionArtifactVersions: 3,
+		IssuePreventions: 4, PreventionVerifications: 6,
+	}
 	text := ui.FormatDeleteCounts(counts)
-	for _, want := range []string{"5 occurrence(s)", "5 event(s)", "2 issue(s)", "1 fix version(s)"} {
+	for _, want := range []string{
+		"5 occurrence(s)", "5 event(s)", "2 issue(s)", "1 fix version(s)",
+		"2 prevention artifact(s)", "3 prevention version(s)",
+		"4 prevention link(s)", "6 prevention verification(s)",
+	} {
 		if !strings.Contains(text, want) {
 			t.Errorf("FormatDeleteCounts = %q, missing %q", text, want)
 		}
+	}
+}
+
+func TestDeletePreviewWithOnlyPreventionCountsNeedsConfirmation(t *testing.T) {
+	t.Parallel()
+	page, _, data := newSettingsPage(t, nil)
+	data.preview = database.DeleteCounts{PreventionArtifacts: 1, PreventionArtifactVersions: 1}
+	if _, err := page.PreviewDelete(context.Background(), ui.DeleteRequest{ProjectKey: "proj-a"}); err != nil {
+		t.Fatalf("preview prevention-only deletion: %v", err)
+	}
+	if !strings.Contains(page.Status(), "review the counts") {
+		t.Fatalf("status = %q, want a confirmation prompt for prevention rows", page.Status())
 	}
 }
 

@@ -5,10 +5,12 @@ import (
 	"encoding/json"
 	"io"
 	"net/http"
+	"strings"
 	"testing"
 	"time"
 
 	"github.com/jingchangzhao-gif/error-knowledge-base/internal/audit"
+	"github.com/jingchangzhao-gif/error-knowledge-base/internal/database"
 )
 
 func doJSON(t *testing.T, method, url, token string, body io.Reader) ([]byte, int) {
@@ -107,6 +109,33 @@ func TestAuditRejectsMalformedFilters(t *testing.T) {
 	for _, query := range []string{"limit=-1", "offset=x", "from=yesterday"} {
 		if _, code := doJSON(t, http.MethodGet, httpServer.URL+"/api/audit?"+query, server.Token(), nil); code != http.StatusBadRequest {
 			t.Fatalf("%s: status = %d, want 400", query, code)
+		}
+	}
+}
+
+func TestDeletionPreviewIncludesPreventionCounts(t *testing.T) {
+	store := &fakeSettingsStore{config: settingsConfig()}
+	data := &fakeSettingsData{preview: database.DeleteCounts{
+		PreventionArtifacts: 1, PreventionArtifactVersions: 2,
+		IssuePreventions: 3, PreventionVerifications: 4,
+	}}
+	server, base := newSettingsShell(t, store, data)
+	payload, code := doJSON(t, http.MethodPost, base+"/api/deletions/preview", server.Token(), strings.NewReader(`{"project_key":"p1"}`))
+	if code != http.StatusOK {
+		t.Fatalf("preview: status = %d, body = %s", code, payload)
+	}
+	var response struct {
+		Counts map[string]int64 `json:"counts"`
+	}
+	if err := json.Unmarshal(payload, &response); err != nil {
+		t.Fatalf("decode preview: %v", err)
+	}
+	for name, want := range map[string]int64{
+		"prevention_artifacts": 1, "prevention_artifact_versions": 2,
+		"issue_preventions": 3, "prevention_verifications": 4,
+	} {
+		if response.Counts[name] != want {
+			t.Errorf("%s = %d, want %d; payload = %s", name, response.Counts[name], want, payload)
 		}
 	}
 }

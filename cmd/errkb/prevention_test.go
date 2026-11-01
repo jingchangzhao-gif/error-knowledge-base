@@ -26,11 +26,13 @@ type preventionCLIClient struct {
 	activateRequest  contract.PreventionActivateRequest
 	listRequest      contract.PreventionListRequest
 	getRequest       contract.PreventionGetRequest
+	statsRequest     contract.PreventionStatsRequest
 	addResponse      *contract.PreventionAddResponse
 	verifyResponse   *contract.PreventionVerifyResponse
 	activateResponse *contract.PreventionActivateResponse
 	listResponse     *contract.PreventionListResponse
 	getResponse      *contract.PreventionGetResponse
+	statsResponse    *contract.PreventionStatsResponse
 	deadlines        []time.Duration
 }
 
@@ -113,6 +115,29 @@ func (f *preventionCLIClient) PreventionGet(ctx context.Context, request contrac
 	return contract.PreventionGetResponse{SchemaVersion: "v1", Artifact: preventionCLIArtifact(), Versions: []contract.PreventionVersion{version}, Verifications: []contract.PreventionVerification{verification}}, nil
 }
 
+func (f *preventionCLIClient) PreventionStats(ctx context.Context, request contract.PreventionStatsRequest) (contract.PreventionStatsResponse, error) {
+	f.note(contract.OperationPreventionStats)
+	f.observeDeadline(ctx)
+	f.statsRequest = request
+	if f.err != nil {
+		return contract.PreventionStatsResponse{}, f.err
+	}
+	if f.statsResponse != nil {
+		return *f.statsResponse, nil
+	}
+	return contract.PreventionStatsResponse{
+		SchemaVersion: "v1", ByStatus: []contract.PreventionCount{{Name: "active", Count: 1}},
+		ByKind:           []contract.PreventionCount{{Name: "regression_test", Count: 1}},
+		VerificationRuns: 2, VerificationPassed: 1, VerificationPassRate: 0.5,
+		Activations: []contract.PreventionActivationStats{{
+			IssueID: "issue-1", ArtifactID: "artifact-1", ArtifactVersionID: "version-1",
+			ActivatedAt: "2026-10-30T00:01:00Z", CommitSHA: strings.Repeat("b", 40), Status: "active",
+			RecurrenceCount: 1, BeforeCount: 2, AfterCount: 1, BeforeDays: 3, AfterDays: 2, ObservationStatus: "observing",
+		}},
+		RecurringVersionIDs: []string{"version-1"},
+	}, nil
+}
+
 func preventionCLITestEnv(fake *preventionCLIClient) (*cliEnv, *bytes.Buffer, *bytes.Buffer) {
 	env, stdout, stderr := testEnv(fake.fakeClient)
 	env.dial = func(context.Context) (apiClient, error) { return fake, nil }
@@ -158,7 +183,7 @@ func preventionCLIVerification(passed bool) contract.PreventionVerification {
 
 func TestPreventionUsageAndUnknownCommands(t *testing.T) {
 	fake := newPreventionCLIClient()
-	for _, args := range [][]string{nil, {"unknown"}, {"stats"}} {
+	for _, args := range [][]string{nil, {"unknown"}} {
 		env, _, _ := preventionCLITestEnv(fake)
 		if code := runCommand("prevention", args, env); code != exitUsage {
 			t.Fatalf("prevention %v exit = %d, want %d", args, code, exitUsage)
@@ -166,11 +191,37 @@ func TestPreventionUsageAndUnknownCommands(t *testing.T) {
 	}
 	var usageText bytes.Buffer
 	usage(&usageText)
-	if !strings.Contains(usageText.String(), "prevention add|verify|activate|list|show") {
-		t.Fatalf("usage does not list batch-three commands:\n%s", usageText.String())
+	if !strings.Contains(usageText.String(), "prevention add|verify|activate|list|show|stats") {
+		t.Fatalf("usage does not list all six prevention commands:\n%s", usageText.String())
 	}
-	if strings.Contains(usageText.String(), "prevention stats") {
-		t.Fatalf("usage advertises prevention stats before batch five:\n%s", usageText.String())
+}
+
+func TestPreventionStatsFiltersAndReadOnlyOutput(t *testing.T) {
+	fake := newPreventionCLIClient()
+	env, stdout, _ := preventionCLITestEnv(fake)
+	if code := runCommand("prevention", []string{"stats", "--project", "demo", "--issue", "issue-1"}, env); code != exitOK {
+		t.Fatalf("stats exit = %d", code)
+	}
+	if fake.statsRequest.ProjectKey != "demo" || fake.statsRequest.IssueID != "issue-1" {
+		t.Fatalf("stats request = %+v", fake.statsRequest)
+	}
+	for _, want := range []string{"active=1", "regression_test=1", "1/2", "50.0%", "recurrence=1", "before=2/3d", "after=1/2d", "observing", "no mature records", "version-1"} {
+		if !strings.Contains(stdout.String(), want) {
+			t.Fatalf("stats output lacks %q:\n%s", want, stdout.String())
+		}
+	}
+	if strings.Contains(stdout.String(), "prevented_count") {
+		t.Fatalf("stats invented a prevented count:\n%s", stdout.String())
+	}
+
+	env, stdout, _ = preventionCLITestEnv(fake)
+	env.json = true
+	if code := runCommand("prevention", []string{"stats"}, env); code != exitOK {
+		t.Fatalf("stats JSON exit = %d", code)
+	}
+	var response contract.PreventionStatsResponse
+	if err := json.Unmarshal(stdout.Bytes(), &response); err != nil || response.Validate() != nil || response.MatureProtectionRate != nil || response.Activations[0].RecurrenceCount != 1 {
+		t.Fatalf("stats JSON = %+v, %v", response, err)
 	}
 }
 
