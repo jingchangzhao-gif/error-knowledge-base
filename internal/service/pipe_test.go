@@ -226,6 +226,14 @@ func (f *fakeBackend) PreventionGet(context.Context, contract.PreventionGetReque
 	return contract.PreventionGetResponse{SchemaVersion: "v1", Artifact: preventionContractArtifact(), Versions: []contract.PreventionVersion{}, Verifications: []contract.PreventionVerification{}}, nil
 }
 
+func (f *fakeBackend) PreventionStats(context.Context, contract.PreventionStatsRequest) (contract.PreventionStatsResponse, error) {
+	f.note(contract.OperationPreventionStats)
+	if f.err != nil {
+		return contract.PreventionStatsResponse{}, f.err
+	}
+	return preventionStatsContractResponse(), nil
+}
+
 func newTestPipeName() string {
 	return `\\.\pipe\errkb-test-` + strconv.FormatInt(time.Now().UnixNano(), 10)
 }

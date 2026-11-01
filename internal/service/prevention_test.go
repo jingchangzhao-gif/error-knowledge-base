@@ -348,14 +348,6 @@ func preventionStatsContractResponse() contract.PreventionStatsResponse {
 	}
 }
 
-func (f *fakeBackend) PreventionStats(context.Context, contract.PreventionStatsRequest) (contract.PreventionStatsResponse, error) {
-	f.note(contract.OperationPreventionStats)
-	if f.err != nil {
-		return contract.PreventionStatsResponse{}, f.err
-	}
-	return preventionStatsContractResponse(), nil
-}
-
 func (b *preventionAPIBackend) PreventionStats(context.Context, contract.PreventionStatsRequest) (contract.PreventionStatsResponse, error) {
 	b.operations = append(b.operations, contract.OperationPreventionStats)
 	return preventionStatsContractResponse(), nil
