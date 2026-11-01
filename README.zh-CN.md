@@ -48,30 +48,30 @@
 - **已验证**：行为已经在注明的真实环境中运行过。
 - **可发布**：同一套带版本的产物已经通过强制 Windows 生命周期/恢复与来源门禁。
 
-| 模块 | 当前状态 | 实际含义 |
-| --- | --- | --- |
-| 确定性核心与脱敏 | 已实现并通过单元测试 | 可正常开发规范化、指纹、匹配与脱敏 |
-| PostgreSQL schema 与检索 | 已实现；集成测试需要真实数据库 | 已有 0001–0008 迁移、精确/近似检索、解法与结果 |
-| CLI、后台服务与 MCP | 已实现 | 有已迁移的 PostgreSQL 和 DSN 时，可使用开发构建运行 |
-| DSH、Codex CLI、Claude Code 连接器 | 已按固定版本实测 | 只承诺连接器矩阵中已经验证的能力 |
-| 便携发布与 Windows 恢复 | 已实现；Windows 冒烟任务运行同一个可执行文件 | Windows CI 任务构建二进制、用真实 PostgreSQL 跑全部 Go 测试并回答 MCP 自检；`errkb pg install` 与 `autostart.ps1` 覆盖首次运行和登录恢复 |
-| 内嵌 Web 工具箱 | 已实现并有自动化测试覆盖 | 搜索、详情/编辑、统计/审计和设置路由均已接入 `ui --web` |
-| 发布来源门禁 | 已实现并通过发布验证 | 会拒绝缺失/不匹配 tag 与脏源码；已验收 tag `v0.1.2` 指向提交 `1438473` 之后的修复线 |
-| 发布包 | 已发布为 v0.1.3 | GitHub Release 包含工具箱 ZIP、独立 EXE、manifest、SBOM 与校验和；仓库配置 `NPM_TOKEN` 时同一 tag 还会发布 npm 包 |
+| 模块                               | 当前状态                                     | 实际含义                                                                                                                                 |
+| ---------------------------------- | -------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------- |
+| 确定性核心与脱敏                   | 已实现并通过单元测试                         | 可正常开发规范化、指纹、匹配与脱敏                                                                                                       |
+| PostgreSQL schema 与检索           | 已实现；集成测试需要真实数据库               | v0.1.3 包含 0001–0008；Unreleased 源码新增 0009 预防元数据，以及既有精确/近似检索、解法与结果                                            |
+| CLI、后台服务与 MCP                | 已实现                                       | 有已迁移的 PostgreSQL 和 DSN 时，可使用开发构建运行                                                                                      |
+| DSH、Codex CLI、Claude Code 连接器 | 已按固定版本实测                             | 只承诺连接器矩阵中已经验证的能力                                                                                                         |
+| 便携发布与 Windows 恢复            | 已实现；Windows 冒烟任务运行同一个可执行文件 | Windows CI 任务构建二进制、用真实 PostgreSQL 跑全部 Go 测试并回答 MCP 自检；`errkb pg install` 与 `autostart.ps1` 覆盖首次运行和登录恢复 |
+| 内嵌 Web 工具箱                    | 已实现并有自动化测试覆盖                     | 搜索、详情/编辑、统计/审计和设置路由均已接入 `ui --web`                                                                                  |
+| 发布来源门禁                       | 已实现并通过发布验证                         | 会拒绝缺失/不匹配 tag 与脏源码；已验收 tag `v0.1.2` 指向提交 `1438473` 之后的修复线                                                      |
+| 发布包                             | 已发布为 v0.1.3                              | GitHub Release 包含工具箱 ZIP、独立 EXE、manifest、SBOM 与校验和；仓库配置 `NPM_TOKEN` 时同一 tag 还会发布 npm 包                        |
 
 ## 功能总览
 
 本项目覆盖的是完整的“技术错误复用闭环”，不只是收集日志：
 
-| 阶段 | 用户看到的能力 | 实现边界 |
-| --- | --- | --- |
-| 观察 | 从 Hook、CLI 包装器、连接器和日志采集失败 | 适配器只产生 `ErrorEvent v1`，不拥有匹配算法 |
-| 保护 | 在持久化之前删除敏感信息 | 一份 CUE 规则生成 Go、TypeScript 和 CI 规则 |
-| 识别 | 分类、规范化、计算指纹并去重 | 确定性 Go/TypeScript 处理 + PostgreSQL 事务化记录 |
-| 检索 | 先搜精确标识，再找有限的近似候选 | PL/pgSQL 精确/`pg_trgm` 查询 + Go Jaccard 重排 |
-| 复用 | 返回已有解法、来源、匹配原因、环境警告和可信度 | CLI、MCP、通知与 UI 共用后端契约 |
-| 学习 | 记录解法是否成功，并保存解法历史 | 版本化解法、结果记录与 SQL 计算可信度 |
-| 运维 | 诊断、迁移、保留、删除、审计和备份本地数据 | Go 运维层 + PostgreSQL 函数和迁移账本 |
+| 阶段               | 用户看到的能力                                                   | 实现边界                                                                               |
+| ------------------ | ---------------------------------------------------------------- | -------------------------------------------------------------------------------------- |
+| 观察               | 从 Hook、CLI 包装器、连接器和日志采集失败                        | 适配器只产生 `ErrorEvent v1`，不拥有匹配算法                                           |
+| 保护               | 在持久化之前删除敏感信息                                         | 一份 CUE 规则生成 Go、TypeScript 和 CI 规则                                            |
+| 识别               | 分类、规范化、计算指纹并去重                                     | 确定性 Go/TypeScript 处理 + PostgreSQL 事务化记录                                      |
+| 检索               | 先搜精确标识，再找有限的近似候选                                 | PL/pgSQL 精确/`pg_trgm` 查询 + Go Jaccard 重排                                         |
+| 复用               | 返回已有解法、来源、匹配原因、环境警告和可信度                   | CLI、MCP、通知与 UI 共用后端契约                                                       |
+| 预防（Unreleased） | 版本化回归测试、确定性检查、代理指令和意图；验证、激活并观察复发 | 人工 CLI 决策、不可变元数据、干净 Git 证据和真实 occurrence 统计；不自动修改文件或 Git |
+| 运维               | 诊断、迁移、保留、删除、审计和备份本地数据                       | Go 运维层 + PostgreSQL 函数和迁移账本                                                  |
 
 每项功能对应的源码位置、调用链、完成度和未接入部分，见 [`docs/features-and-implementation.zh-CN.md`](docs/features-and-implementation.zh-CN.md)。
 
@@ -96,12 +96,12 @@
 
 实测于 2026-10-20；版本刻意固定。每一行都对应一条真实验收记录；没有实测的内容一律列为未验证，见 [`docs/connector-matrix.zh-CN.md`](docs/connector-matrix.zh-CN.md)。
 
-| 宿主 | 实测版本 | 通道 | 诊断前能拿到已知解法 | 验收记录 |
-| --- | --- | --- | --- | --- |
-| 通用 CLI（`errkb run --`） | 本仓库构建的 errkb | **B** 包装器 | 否 —— 失败之后 | [`docs/e2e-cli-loop.zh-CN.md`](docs/e2e-cli-loop.zh-CN.md) |
-| DSH（插件适配器） | DSH 0.2.0-rc.2 | **A** 插件 Hook | 是 —— 常驻提示与执行后通知 | EKB-039，PR #66 |
-| Codex CLI | 0.156.1 | **B** 包装器；**MCP** 九个工具 | 否 —— MCP 工具可主动查询，但没有失败前 Hook | [`connectors/codex/probe.md`](connectors/codex/probe.md) |
-| Claude Code | 2.1.282 | **A** `PostToolUseFailure` Hook；**B** 包装器；**MCP** | 是 —— `SessionStart` 提示与 MCP 工具 | [`connectors/claude/probe.md`](connectors/claude/probe.md) |
+| 宿主                       | 实测版本           | 通道                                                                   | 诊断前能拿到已知解法                        | 验收记录                                                   |
+| -------------------------- | ------------------ | ---------------------------------------------------------------------- | ------------------------------------------- | ---------------------------------------------------------- |
+| 通用 CLI（`errkb run --`） | 本仓库构建的 errkb | **B** 包装器                                                           | 否 —— 失败之后                              | [`docs/e2e-cli-loop.zh-CN.md`](docs/e2e-cli-loop.zh-CN.md) |
+| DSH（插件适配器）          | DSH 0.2.0-rc.2     | **A** 插件 Hook                                                        | 是 —— 常驻提示与执行后通知                  | EKB-039，PR #66                                            |
+| Codex CLI                  | 0.156.1            | **B** 包装器；**MCP** 在 Unreleased 源码中为 12 个工具（v0.1.3：9 个） | 否 —— MCP 工具可主动查询，但没有失败前 Hook | [`connectors/codex/probe.md`](connectors/codex/probe.md)   |
+| Claude Code                | 2.1.282            | **A** `PostToolUseFailure` Hook；**B** 包装器；**MCP**                 | 是 —— `SessionStart` 提示与 MCP 工具        | [`connectors/claude/probe.md`](connectors/claude/probe.md) |
 
 通用日志与手工宿主使用 [`connectors/templates/cli-log/`](connectors/templates/cli-log/README.md) 的模板；它们的日志通道与手工通道尚未实测。窗口标题不是接口契约，这里的支持声明没有一条建立在窗口标题上。
 
@@ -150,26 +150,27 @@
 
 一个二进制，多个子命令：
 
-| 命令 | 作用 |
-| --- | --- |
-| `errkb search <query>` | 按 issue id、指纹、错误码、命令或文本检索；人读表格或 `--json` |
-| `errkb show <id-or-fingerprint>` | 查看单个问题及其出现记录、解法和版本 |
-| `errkb record --event <file>` | 记录完整的 `ErrorEvent v1` 载荷（stdin 或文件） |
-| `errkb list --kind issue\|solution` | 列出问题或解法，可按项目过滤 |
-| `errkb feedback <issue> <version> --outcome success\|failure\|unknown` | 记录结果；可信度就靠它变化 |
-| `errkb stats` | 计数、命中率、延迟百分位与估算节省 |
-| `errkb run -- <command>` | 运行命令、保持输出可见、只记录失败 |
-| `errkb db migrate\|status` | 应用迁移或查看 schema 账本 |
-| `errkb tail --file <path>` | 跟随日志文件并记录其中的失败（通道 C） |
-| `errkb markdown import\|export` | 导入或导出旧版 `ERRORS.md` 格式 |
-| `errkb daemon` | 本地后台服务：Named Pipe API、健康文档、脱敏日志 |
-| `errkb ui` | 源码树中的原生托盘/搜索宿主；不是已发布的 Web 工具箱 |
-| `errkb ui --web` | 本地 Web 工具箱（搜索、详情/编辑、统计、设置）；随工具箱 ZIP 提供 |
-| `errkb doctor` | 九项只读检查：环境、连接器与 MCP，每条发现附修复建议 |
-| `errkb mcp` | 带九个工具的 MCP stdio 服务；自动解析已安装凭据，daemon 未运行时自动拉起 |
-| `errkb mcp install --host codex\|claude\|dsh` | 把 MCP 服务注册到本机 LLM 宿主；DSH 打印插件路径 |
-| `errkb mcp selftest` | 在内存里完成一次 initialize 与 tools/list 后退出；`doctor` 会调用它 |
-| `errkb version` | 版本、提交、构建时间与 Go 工具链 |
+| 命令                                                                   | 作用                                                                                                        |
+| ---------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------- |
+| `errkb search <query>`                                                 | 按 issue id、指纹、错误码、命令或文本检索；人读表格或 `--json`                                              |
+| `errkb show <id-or-fingerprint>`                                       | 查看单个问题及其出现记录、解法和版本                                                                        |
+| `errkb record --event <file>`                                          | 记录完整的 `ErrorEvent v1` 载荷（stdin 或文件）                                                             |
+| `errkb list --kind issue\|solution`                                    | 列出问题或解法，可按项目过滤                                                                                |
+| `errkb feedback <issue> <version> --outcome success\|failure\|unknown` | 记录结果；可信度就靠它变化                                                                                  |
+| `errkb stats`                                                          | 计数、命中率、延迟百分位与估算节省                                                                          |
+| `errkb prevention add\|verify\|activate\|list\|show\|stats`            | Unreleased 源码：登记、验证、激活并观察版本化预防产物；详见预防指南                                         |
+| `errkb run -- <command>`                                               | 运行命令、保持输出可见、只记录失败                                                                          |
+| `errkb db migrate\|status`                                             | 应用迁移或查看 schema 账本                                                                                  |
+| `errkb tail --file <path>`                                             | 跟随日志文件并记录其中的失败（通道 C）                                                                      |
+| `errkb markdown import\|export`                                        | 导入或导出旧版 `ERRORS.md` 格式                                                                             |
+| `errkb daemon`                                                         | 本地后台服务：Named Pipe API、健康文档、脱敏日志                                                            |
+| `errkb ui`                                                             | 源码树中的原生托盘/搜索宿主；不是已发布的 Web 工具箱                                                        |
+| `errkb ui --web`                                                       | 本地 Web 工具箱（搜索、详情/编辑、统计、设置）；随工具箱 ZIP 提供                                           |
+| `errkb doctor`                                                         | 九项只读检查：环境、连接器与 MCP，每条发现附修复建议                                                        |
+| `errkb mcp`                                                            | MCP stdio 服务在 Unreleased 源码中带 12 个工具（v0.1.3：9 个）；自动解析已安装凭据，daemon 未运行时自动拉起 |
+| `errkb mcp install --host codex\|claude\|dsh`                          | 把 MCP 服务注册到本机 LLM 宿主；DSH 打印插件路径                                                            |
+| `errkb mcp selftest`                                                   | 在内存里完成一次 initialize 与 tools/list 后退出；`doctor` 会调用它                                         |
+| `errkb version`                                                        | 版本、提交、构建时间与 Go 工具链                                                                            |
 
 退出码：`0` 找到/成功，`1` 内部错误，`2` 参数错误，`3` 未找到，`4` 后台服务不可用。`--json` 输出的是校验过的契约载荷，不是二次渲染的近似物。
 
@@ -195,7 +196,7 @@ service:
   pipe:
     enabled: true
   http:
-    enabled: false        # 启用时只允许回环地址，令牌至少 32 个字符
+    enabled: false # 启用时只允许回环地址，令牌至少 32 个字符
 capture:
   enabled: true
 retention:
@@ -215,7 +216,7 @@ retention:
 
 ## 兼容性与版本口径
 
-- **schema。** v1，迁移 `0001`–`0008`。旧 schema 升级用 `db/migrations/testdata/upgrade/` 中的真实快照测试；更新的账本版本会被显式拒绝，失败的迁移在单个事务内回滚。
+- **schema。** v1。已发布的 v0.1.3 包含迁移 `0001`–`0008`；Unreleased 源码新增预防元数据迁移 `0009`。旧 schema 升级用 `db/migrations/testdata/upgrade/` 中的真实快照测试；更新的账本版本会被显式拒绝，失败的迁移在单个事务内回滚。
 - **契约。** `ErrorEvent v1`、配置、连接器能力、MCP 工具、本地 API、连接器 SDK 与脱敏规则都有 CUE 定义。兼容性由 `spec/compat.cue` 和 `Schema compatibility` CI 作业把关：新增可选字段、新增枚举成员属于兼容；删除、改名或改类型必须升 `schema_version`，违反规则作业直接失败。
 - **DSH 依赖包。** 插件按锁文件解析的 `@deepseek-ai/dsh-llm`、`@deepseek-ai/dsh-tools` **0.1.5-rc.3** 构建，宿主为 **0.2.x** 世代（实测 0.2.0-rc.2；计划里以 `dsh-ops` 的 peer 范围作为版本证据）。早先写的 rc.2 是设计期历史口径：peer 范围 `^0.1.5-rc.2` 覆盖 rc.3，且适配器用到的 API 面没有变化。完整说明见计划 §7.2。
 - **协议。** MCP `2024-11-05`；本地 API 与连接器 SDK 的封套都是 `v1`。解码后的载荷拒绝未知字段；声明更新版本的载荷会被拒绝，而不是猜测处理。
@@ -232,22 +233,23 @@ retention:
 
 ## 文档索引
 
-| 文档 | 回答什么 |
-| --- | --- |
-| [`docs/project-status.zh-CN.md`](docs/project-status.zh-CN.md) / [English](docs/project-status.md) | 当前哪些已实现、已验证、阻塞，以及现在能安全运行什么 |
-| [`docs/workflow/README.zh-CN.md`](docs/workflow/README.zh-CN.md) / [English](docs/workflow/README.md) | 工作流控制中心：活动问题、文件修复顺序和清理审计 |
-| [`docs/features-and-implementation.zh-CN.md`](docs/features-and-implementation.zh-CN.md) / [English](docs/features-and-implementation.md) | 每项功能做什么，以及由哪些源码、契约和数据链路实现 |
-| [`docs/implementation-plan.zh-CN.md`](docs/implementation-plan.zh-CN.md) / [English](docs/implementation-plan.md) | 范围、决定、任务顺序和验收门槛 |
-| [`docs/connector-matrix.zh-CN.md`](docs/connector-matrix.zh-CN.md) / [English](docs/connector-matrix.md) | 每个宿主到底报哪些字段，版本固定并实测 |
-| [`docs/install.zh-CN.md`](docs/install.zh-CN.md) / [English](docs/install.md) | 当前安装候选、数据位置、升级和卸载 |
-| [`docs/toolbox-ui.zh-CN.md`](docs/toolbox-ui.zh-CN.md) / [English](docs/toolbox-ui.md) | 工具箱 UI 架构、实施状态和剩余任务 |
-| [`docs/privacy.zh-CN.md`](docs/privacy.zh-CN.md) / [English](docs/privacy.md) | 数据流向、脱敏、保留期、删除 |
-| [`docs/benchmarks.zh-CN.md`](docs/benchmarks.zh-CN.md) / [English](docs/benchmarks.md) | 性能门槛、数据集、查询计划、环境 |
-| [`docs/test-record.zh-CN.md`](docs/test-record.zh-CN.md) / [English](docs/test-record.md) | 长期保存的完整测试与 Windows 验收记录 |
-| [`docs/acceptance-vm.zh-CN.md`](docs/acceptance-vm.zh-CN.md) / [English](docs/acceptance-vm.md) | 干净机验收历史记录；实时门禁是 Windows 冒烟任务 |
-| [`docs/e2e-cli-loop.zh-CN.md`](docs/e2e-cli-loop.zh-CN.md) / [English](docs/e2e-cli-loop.md) | 通用 CLI 闭环，全程不经过模型 |
-| [`CHANGELOG.md`](CHANGELOG.md) | 每个版本改了什么 |
-| [`packaging/windows/`](packaging/windows) | 便携工具箱的构建与发布脚本 |
+| 文档                                                                                                                                      | 回答什么                                             |
+| ----------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------- |
+| [`docs/project-status.zh-CN.md`](docs/project-status.zh-CN.md) / [English](docs/project-status.md)                                        | 当前哪些已实现、已验证、阻塞，以及现在能安全运行什么 |
+| [`docs/workflow/README.zh-CN.md`](docs/workflow/README.zh-CN.md) / [English](docs/workflow/README.md)                                     | 工作流控制中心：活动问题、文件修复顺序和清理审计     |
+| [`docs/features-and-implementation.zh-CN.md`](docs/features-and-implementation.zh-CN.md) / [English](docs/features-and-implementation.md) | 每项功能做什么，以及由哪些源码、契约和数据链路实现   |
+| [`docs/implementation-plan.zh-CN.md`](docs/implementation-plan.zh-CN.md) / [English](docs/implementation-plan.md)                         | 范围、决定、任务顺序和验收门槛                       |
+| [`docs/connector-matrix.zh-CN.md`](docs/connector-matrix.zh-CN.md) / [English](docs/connector-matrix.md)                                  | 每个宿主到底报哪些字段，版本固定并实测               |
+| [`docs/install.zh-CN.md`](docs/install.zh-CN.md) / [English](docs/install.md)                                                             | 当前安装候选、数据位置、升级和卸载                   |
+| [`docs/toolbox-ui.zh-CN.md`](docs/toolbox-ui.zh-CN.md) / [English](docs/toolbox-ui.md)                                                    | 工具箱 UI 架构、实施状态和剩余任务                   |
+| [`docs/privacy.zh-CN.md`](docs/privacy.zh-CN.md) / [English](docs/privacy.md)                                                             | 数据流向、脱敏、保留期、删除                         |
+| [`docs/benchmarks.zh-CN.md`](docs/benchmarks.zh-CN.md) / [English](docs/benchmarks.md)                                                    | 性能门槛、数据集、查询计划、环境                     |
+| [`docs/test-record.zh-CN.md`](docs/test-record.zh-CN.md) / [English](docs/test-record.md)                                                 | 长期保存的完整测试与 Windows 验收记录                |
+| [`docs/acceptance-vm.zh-CN.md`](docs/acceptance-vm.zh-CN.md) / [English](docs/acceptance-vm.md)                                           | 干净机验收历史记录；实时门禁是 Windows 冒烟任务      |
+| [`docs/e2e-cli-loop.zh-CN.md`](docs/e2e-cli-loop.zh-CN.md) / [English](docs/e2e-cli-loop.md)                                              | 通用 CLI 闭环，全程不经过模型                        |
+| [`docs/prevention.zh-CN.md`](docs/prevention.zh-CN.md) / [English](docs/prevention.md)                                                    | Unreleased 预防产物、验证、激活、复发指标与故障排查  |
+| [`CHANGELOG.md`](CHANGELOG.md)                                                                                                            | 每个版本改了什么                                     |
+| [`packaging/windows/`](packaging/windows)                                                                                                 | 便携工具箱的构建与发布脚本                           |
 
 ## 已知局限
 
@@ -258,6 +260,7 @@ retention:
 - **PostgreSQL 是前置条件。** 核心需要本地 PostgreSQL 16 服务；`errkb pg install` 会创建专用实例，但数据库不内嵌在程序里。
 - **DSH 插件仍在等待商店审核。** 目前以手动安装为受支持路径。
 - **连接器矩阵里有两处实测缺口：** DSH 的 `tools/result` 实时路径与 Codex 的 `PostToolUse` Hook 尚未验证。
+- **预防产物激活不等于接入宿主或 CI。** 激活不会安装 Hook、修改 CI、编辑文件或写入 Git 状态；MCP 登记只接收调用方提供的哈希，不会对照文件证明其正确性；Web 预防视图只读。
 
 ## 开发
 
@@ -284,4 +287,3 @@ cue vet ./spec/...
 ## 许可证
 
 [MIT](LICENSE) © jingchangzhao-gif
-

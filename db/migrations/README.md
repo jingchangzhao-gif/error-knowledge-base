@@ -86,12 +86,20 @@ ERRKB_TEST_DATABASE_URL='postgres://postgres:postgres@127.0.0.1:5432/postgres?ss
 ```
 
 Each test runs in a throwaway schema (`errkb_migrate_<nanoseconds>`) that is
-dropped afterwards. Covered: fresh schema with exactly the eleven entities;
-second run applies nothing and adds no ledger row; an edited file fails with a
-checksum mismatch; a failing file rolls back both its statements and its ledger
-row; two concurrent migrators apply the schema once; structural assertions
-(entity separation, per-artifact retention, audit columns, no foreign keys on
+dropped afterwards. Covered: fresh schema with exactly the fifteen business
+tables (the original eleven plus the four prevention tables from 0009); second
+run applies nothing and adds no ledger row; an edited file fails with a checksum
+mismatch; a failing file rolls back both its statements and its ledger row; two
+concurrent migrators apply the schema once; structural assertions (entity
+separation, per-artifact retention, audit columns, no foreign keys on
 `audit_log`, `events` columns aligned with `ErrorEvent v1`).
+
+Migration 0009 adds immutable prevention artifact metadata, version and issue
+links, explicit verification runs, recurrence indexes, and prevention-aware
+scoped deletion. Upgrade tests load the committed 0007 schema dump and apply
+0008 and 0009 directly with existing rows intact. A synthetic failing 0010
+migration verifies transaction rollback without undoing the committed 0009
+upgrade; unknown future ledger versions are rejected.
 
 ## CI
 

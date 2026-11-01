@@ -6,6 +6,7 @@
 package main
 
 import (
+	"context"
 	"flag"
 	"fmt"
 	"strings"
@@ -19,7 +20,7 @@ const preventionVerifyPipeTimeout = 125 * time.Second
 
 func runPrevention(args []string, env *cliEnv) int {
 	if len(args) == 0 {
-		fmt.Fprintln(env.stderr, "errkb prevention: add, verify, activate, list or show is required")
+		fmt.Fprintln(env.stderr, "errkb prevention: add, verify, activate, list, show or stats is required")
 		return exitUsage
 	}
 	switch args[0] {
@@ -33,6 +34,8 @@ func runPrevention(args []string, env *cliEnv) int {
 		return runPreventionList(args[1:], env)
 	case "show":
 		return runPreventionShow(args[1:], env)
+	case "stats":
+		return runPreventionStats(args[1:], env)
 	default:
 		fmt.Fprintf(env.stderr, "errkb prevention: unknown subcommand %q\n", args[0])
 		return exitUsage
@@ -282,6 +285,67 @@ func runPreventionShow(args []string, env *cliEnv) int {
 		case "verified":
 			fmt.Fprintf(env.stdout, "   next: errkb prevention activate %s --repo <repository-path>\n", version.ArtifactVersionID)
 		}
+	}
+	return exitOK
+}
+
+func runPreventionStats(args []string, env *cliEnv) int {
+	flags := flag.NewFlagSet("prevention stats", flag.ContinueOnError)
+	flags.SetOutput(env.stderr)
+	project := flags.String("project", "", "filter by project key")
+	issue := flags.String("issue", "", "filter by issue id")
+	flagArgs, positional := splitCommandArguments(args)
+	if err := flags.Parse(flagArgs); err != nil {
+		return exitUsage
+	}
+	if len(positional) != 0 {
+		return env.usageError("prevention stats", fmt.Errorf("it takes no positional arguments"))
+	}
+	request := contract.PreventionStatsRequest{SchemaVersion: contract.PreventionSchemaVersion, ProjectKey: *project, IssueID: *issue}
+	if err := request.Validate(); err != nil {
+		return env.usageError("prevention stats", err)
+	}
+	client, code := env.open()
+	if code != exitOK {
+		return code
+	}
+	defer func() { _ = client.Close() }()
+	statsClient, ok := client.(interface {
+		PreventionStats(context.Context, contract.PreventionStatsRequest) (contract.PreventionStatsResponse, error)
+	})
+	if !ok {
+		return env.fail("prevention stats", fmt.Errorf("the daemon client does not support prevention statistics"))
+	}
+	ctx, cancel := env.callContext()
+	defer cancel()
+	response, err := statsClient.PreventionStats(ctx, request)
+	if err != nil {
+		return env.fail("prevention stats", err)
+	}
+	if env.json {
+		return env.writeJSON(response)
+	}
+	for _, count := range response.ByStatus {
+		fmt.Fprintf(env.stdout, "status %s=%d\n", count.Name, count.Count)
+	}
+	for _, count := range response.ByKind {
+		fmt.Fprintf(env.stdout, "kind %s=%d\n", count.Name, count.Count)
+	}
+	fmt.Fprintf(env.stdout, "verification passed %d/%d (%.1f%%)\n", response.VerificationPassed, response.VerificationRuns, response.VerificationPassRate*100)
+	for _, activation := range response.Activations {
+		fmt.Fprintf(env.stdout, "activation %s  issue %s  status %s  %s\n", activation.ArtifactVersionID, activation.IssueID, activation.Status, activation.ObservationStatus)
+		fmt.Fprintf(env.stdout, "   first_seen_to_activation_ms=%d  recurrence=%d\n", activation.FirstSeenToActivationMS, activation.RecurrenceCount)
+		fmt.Fprintf(env.stdout, "   before=%d/%dd  after=%d/%dd\n", activation.BeforeCount, activation.BeforeDays, activation.AfterCount, activation.AfterDays)
+	}
+	if response.MatureProtectionRate == nil {
+		fmt.Fprintln(env.stdout, "mature protection: no mature records")
+	} else {
+		fmt.Fprintf(env.stdout, "mature protection: %d/%d (%.1f%%)\n", response.MatureZeroRecurrence, response.MatureActivations, *response.MatureProtectionRate*100)
+	}
+	if len(response.RecurringVersionIDs) == 0 {
+		fmt.Fprintln(env.stdout, "recurring active versions: none")
+	} else {
+		fmt.Fprintf(env.stdout, "recurring active versions: %s\n", strings.Join(response.RecurringVersionIDs, ","))
 	}
 	return exitOK
 }

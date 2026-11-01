@@ -48,30 +48,31 @@ The project uses three different words deliberately:
 - **Verified** means the behavior has been exercised in the stated real environment.
 - **Releasable** means one coherent, versioned artifact has passed the mandatory Windows lifecycle/recovery and provenance gates.
 
-| Area | Current state | What that means |
-| --- | --- | --- |
-| Deterministic core and redaction | Implemented and unit-tested | Normalisation, fingerprinting, matching and redaction can be developed normally |
-| PostgreSQL schema and retrieval | Implemented; integration tests require a real database | Migrations `0001`–`0008`, exact/fuzzy retrieval, solutions and outcomes exist |
-| CLI, daemon and MCP | Implemented | Usable from a development build when a migrated PostgreSQL instance and DSN are available |
-| DSH, Codex CLI and Claude Code connectors | Measured with pinned versions | See the connector matrix; unsupported host behavior is not implied |
-| Portable release and Windows recovery | Implemented; the Windows smoke job runs the same executable | The Windows CI job builds the binary, runs every Go test against a real PostgreSQL and answers the MCP self-test; `errkb pg install` plus `autostart.ps1` cover first run and logon recovery |
-| Embedded Web toolbox | Implemented and automated-test covered | Search, detail/edit, statistics/audit and settings routes are wired through `ui --web` |
-| Release provenance | Implemented and release-verified | Missing/mismatched tags and dirty source are rejected; accepted tag `v0.1.1` points to commit `1438473` |
-| Release bundle | Released as v0.1.3 | The GitHub Release contains the toolbox ZIP, the standalone EXE, manifest, SBOM and checksums; the npm package is published from the same tag when the repository has an `NPM_TOKEN` secret |
+| Area                                      | Current state                                               | What that means                                                                                                                                                                              |
+| ----------------------------------------- | ----------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Deterministic core and redaction          | Implemented and unit-tested                                 | Normalisation, fingerprinting, matching and redaction can be developed normally                                                                                                              |
+| PostgreSQL schema and retrieval           | Implemented; integration tests require a real database      | v0.1.3 contains `0001`–`0008`; Unreleased source adds `0009` prevention metadata, with exact/fuzzy retrieval, solutions and outcomes                                                         |
+| CLI, daemon and MCP                       | Implemented                                                 | Usable from a development build when a migrated PostgreSQL instance and DSN are available                                                                                                    |
+| DSH, Codex CLI and Claude Code connectors | Measured with pinned versions                               | See the connector matrix; unsupported host behavior is not implied                                                                                                                           |
+| Portable release and Windows recovery     | Implemented; the Windows smoke job runs the same executable | The Windows CI job builds the binary, runs every Go test against a real PostgreSQL and answers the MCP self-test; `errkb pg install` plus `autostart.ps1` cover first run and logon recovery |
+| Embedded Web toolbox                      | Implemented and automated-test covered                      | Search, detail/edit, statistics/audit and settings routes are wired through `ui --web`                                                                                                       |
+| Release provenance                        | Implemented and release-verified                            | Missing/mismatched tags and dirty source are rejected; accepted tag `v0.1.1` points to commit `1438473`                                                                                      |
+| Release bundle                            | Released as v0.1.3                                          | The GitHub Release contains the toolbox ZIP, the standalone EXE, manifest, SBOM and checksums; the npm package is published from the same tag when the repository has an `NPM_TOKEN` secret  |
 
 ## Feature overview
 
 The product covers one complete technical-error reuse loop rather than only collecting logs:
 
-| Stage | User-visible capability | Implementation boundary |
-| --- | --- | --- |
-| Observe | Capture failures from hooks, CLI wrappers, connectors and logs | Adapters emit `ErrorEvent v1`; they do not own matching logic |
-| Protect | Redact secrets before persistence | One CUE rule source generates Go, TypeScript and CI rules |
-| Identify | Classify, normalize, fingerprint and deduplicate | Deterministic Go/TypeScript processing plus transactional PostgreSQL recording |
-| Retrieve | Search exact identifiers first, then bounded approximate candidates | PL/pgSQL exact/`pg_trgm` queries and Go Jaccard reranking |
-| Reuse | Return a stored fix with source, match reason, environment warning and trust | CLI, MCP, notifications and UI use the same backend contract |
-| Learn | Record whether a fix succeeded and keep solution history | Versioned solutions, outcomes and SQL-computed trust |
-| Operate | Diagnose, migrate, retain, delete, audit and back up local data | Go operations layer plus PostgreSQL functions and migration ledger |
+| Stage                | User-visible capability                                                                                                 | Implementation boundary                                                                                                  |
+| -------------------- | ----------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------ |
+| Observe              | Capture failures from hooks, CLI wrappers, connectors and logs                                                          | Adapters emit `ErrorEvent v1`; they do not own matching logic                                                            |
+| Protect              | Redact secrets before persistence                                                                                       | One CUE rule source generates Go, TypeScript and CI rules                                                                |
+| Identify             | Classify, normalize, fingerprint and deduplicate                                                                        | Deterministic Go/TypeScript processing plus transactional PostgreSQL recording                                           |
+| Retrieve             | Search exact identifiers first, then bounded approximate candidates                                                     | PL/pgSQL exact/`pg_trgm` queries and Go Jaccard reranking                                                                |
+| Reuse                | Return a stored fix with source, match reason, environment warning and trust                                            | CLI, MCP, notifications and UI use the same backend contract                                                             |
+| Learn                | Record whether a fix succeeded and keep solution history                                                                | Versioned solutions, outcomes and SQL-computed trust                                                                     |
+| Prevent (Unreleased) | Version regression tests, deterministic checks, agent instructions and intents; verify, activate and observe recurrence | Human CLI decisions, immutable metadata, clean Git evidence and real occurrence statistics; no automatic file/Git writes |
+| Operate              | Diagnose, migrate, retain, delete, audit and back up local data                                                         | Go operations layer plus PostgreSQL functions and migration ledger                                                       |
 
 The source-level mapping for every feature, including what is complete and what is only modeled, is in [`docs/features-and-implementation.md`](docs/features-and-implementation.md).
 
@@ -96,12 +97,12 @@ For the source-level implementation map, see [`docs/features-and-implementation.
 
 Measured on 2026-10-20; versions are pinned on purpose. Each row maps to a real acceptance record, and anything not measured is listed as unverified in [`docs/connector-matrix.md`](docs/connector-matrix.md).
 
-| Host | Measured version | Channel | Known fix before diagnosis | Acceptance record |
-| --- | --- | --- | --- | --- |
-| Generic CLI (`errkb run --`) | errkb from this tree | **B** wrapper | No — after the failure | [`docs/e2e-cli-loop.md`](docs/e2e-cli-loop.md) |
-| DSH (plugin adapter) | DSH 0.2.0-rc.2 | **A** plugin hooks | Yes — standing hint and post-execute notices | EKB-039, PR #66 |
-| Codex CLI | 0.156.1 | **B** wrapper; **MCP** nine tools | No — MCP tools are available, but no pre-failure hook | [`connectors/codex/probe.md`](connectors/codex/probe.md) |
-| Claude Code | 2.1.282 | **A** `PostToolUseFailure` hook; **B** wrapper; **MCP** | Yes — `SessionStart` hint and MCP tools | [`connectors/claude/probe.md`](connectors/claude/probe.md) |
+| Host                         | Measured version     | Channel                                                          | Known fix before diagnosis                            | Acceptance record                                          |
+| ---------------------------- | -------------------- | ---------------------------------------------------------------- | ----------------------------------------------------- | ---------------------------------------------------------- |
+| Generic CLI (`errkb run --`) | errkb from this tree | **B** wrapper                                                    | No — after the failure                                | [`docs/e2e-cli-loop.md`](docs/e2e-cli-loop.md)             |
+| DSH (plugin adapter)         | DSH 0.2.0-rc.2       | **A** plugin hooks                                               | Yes — standing hint and post-execute notices          | EKB-039, PR #66                                            |
+| Codex CLI                    | 0.156.1              | **B** wrapper; **MCP** 12 tools in Unreleased source (v0.1.3: 9) | No — MCP tools are available, but no pre-failure hook | [`connectors/codex/probe.md`](connectors/codex/probe.md)   |
+| Claude Code                  | 2.1.282              | **A** `PostToolUseFailure` hook; **B** wrapper; **MCP**          | Yes — `SessionStart` hint and MCP tools               | [`connectors/claude/probe.md`](connectors/claude/probe.md) |
 
 Generic log and manual hosts use the template in [`connectors/templates/cli-log/`](connectors/templates/cli-log/README.md); their log channel and manual channel are not yet measured live. A window title is not an interface contract, so no support claim here rests on one.
 
@@ -150,26 +151,27 @@ The full loop, including the recorded output, is in [`docs/e2e-cli-loop.md`](doc
 
 One binary, several subcommands:
 
-| Command | What it does |
-| --- | --- |
-| `errkb search <query>` | Search by issue id, fingerprint, error code, command or text; human table or `--json` |
-| `errkb show <id-or-fingerprint>` | One issue with occurrences, solutions and versions |
-| `errkb record --event <file>` | Record a complete `ErrorEvent v1` payload (from stdin or a file) |
-| `errkb list --kind issue\|solution` | List issues or solutions, filterable by project |
-| `errkb feedback <issue> <version> --outcome success\|failure\|unknown` | Record an outcome; this is what moves trust |
-| `errkb stats` | Counts, hit rate, latency percentiles and estimated savings |
-| `errkb run -- <command>` | Run a command, keep its output visible, record failures only |
-| `errkb db migrate\|status` | Apply migrations or inspect the schema ledger |
-| `errkb tail --file <path>` | Follow a log file and record its failures (channel C) |
-| `errkb markdown import\|export` | Exchange the legacy `ERRORS.md` format |
-| `errkb daemon` | Local background service: Named Pipe API, health document, redacted log |
-| `errkb ui` | Native tray/search host from the source tree; not the released Web toolbox |
-| `errkb ui --web` | Local Web toolbox (search, detail/edit, statistics, settings); shipped in the toolbox ZIP |
-| `errkb doctor` | Nine read-only environment, connector and MCP checks, with a fix per finding |
-| `errkb mcp` | MCP stdio server with nine tools; resolves the installed credentials and starts the daemon when it is not running |
-| `errkb mcp install --host codex\|claude\|dsh` | Register the MCP server with a local LLM host; DSH prints its plugin path instead |
-| `errkb mcp selftest` | Answer one initialize and tools/list in memory, then exit; `doctor` runs it |
-| `errkb version` | Version, commit, build time and Go toolchain |
+| Command                                                                | What it does                                                                                                                                     |
+| ---------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `errkb search <query>`                                                 | Search by issue id, fingerprint, error code, command or text; human table or `--json`                                                            |
+| `errkb show <id-or-fingerprint>`                                       | One issue with occurrences, solutions and versions                                                                                               |
+| `errkb record --event <file>`                                          | Record a complete `ErrorEvent v1` payload (from stdin or a file)                                                                                 |
+| `errkb list --kind issue\|solution`                                    | List issues or solutions, filterable by project                                                                                                  |
+| `errkb feedback <issue> <version> --outcome success\|failure\|unknown` | Record an outcome; this is what moves trust                                                                                                      |
+| `errkb stats`                                                          | Counts, hit rate, latency percentiles and estimated savings                                                                                      |
+| `errkb prevention add\|verify\|activate\|list\|show\|stats`            | Unreleased source: register, verify, activate and observe versioned prevention artifacts; see the prevention guide                               |
+| `errkb run -- <command>`                                               | Run a command, keep its output visible, record failures only                                                                                     |
+| `errkb db migrate\|status`                                             | Apply migrations or inspect the schema ledger                                                                                                    |
+| `errkb tail --file <path>`                                             | Follow a log file and record its failures (channel C)                                                                                            |
+| `errkb markdown import\|export`                                        | Exchange the legacy `ERRORS.md` format                                                                                                           |
+| `errkb daemon`                                                         | Local background service: Named Pipe API, health document, redacted log                                                                          |
+| `errkb ui`                                                             | Native tray/search host from the source tree; not the released Web toolbox                                                                       |
+| `errkb ui --web`                                                       | Local Web toolbox (search, detail/edit, statistics, settings); shipped in the toolbox ZIP                                                        |
+| `errkb doctor`                                                         | Nine read-only environment, connector and MCP checks, with a fix per finding                                                                     |
+| `errkb mcp`                                                            | MCP stdio server with 12 tools in Unreleased source (v0.1.3: 9); resolves the installed credentials and starts the daemon when it is not running |
+| `errkb mcp install --host codex\|claude\|dsh`                          | Register the MCP server with a local LLM host; DSH prints its plugin path instead                                                                |
+| `errkb mcp selftest`                                                   | Answer one initialize and tools/list in memory, then exit; `doctor` runs it                                                                      |
+| `errkb version`                                                        | Version, commit, build time and Go toolchain                                                                                                     |
 
 Exit codes: `0` found/success, `1` internal error, `2` bad arguments, `3` not found, `4` daemon unavailable. `--json` output is the validated contract payload, not a re-rendered approximation.
 
@@ -195,7 +197,7 @@ service:
   pipe:
     enabled: true
   http:
-    enabled: false        # loopback-only when enabled, token at least 32 characters
+    enabled: false # loopback-only when enabled, token at least 32 characters
 capture:
   enabled: true
 retention:
@@ -215,7 +217,7 @@ Defaults: Named Pipe on, HTTP off, capture on, notices on, search limit 3, captu
 
 ## Compatibility and version caliber
 
-- **Schema.** v1, migrations `0001`–`0008`. Upgrades from older schemas are tested against real snapshots in `db/migrations/testdata/upgrade/`; a newer ledger version is refused explicitly, and a failed migration rolls back in one transaction.
+- **Schema.** v1. Released v0.1.3 contains migrations `0001`–`0008`; Unreleased source adds `0009` for prevention metadata. Upgrades from older schemas are tested against real snapshots in `db/migrations/testdata/upgrade/`; a newer ledger version is refused explicitly, and a failed migration rolls back in one transaction.
 - **Contracts.** CUE definitions for `ErrorEvent v1`, config, connector capability, MCP tools, the local API, the connector SDK and the redaction rules. Compatibility is enforced by `spec/compat.cue` and the `Schema compatibility` CI job: additive optional fields and new enum members are compatible; removing, renaming or re-typing a field requires a `schema_version` bump, and a broken rule fails the job.
 - **DSH packages.** The plugin builds against `@deepseek-ai/dsh-llm` and `@deepseek-ai/dsh-tools` **0.1.5-rc.3** as resolved by the lockfile, and a DSH host in the **0.2.x** generation (0.2.0-rc.2 measured; the plan records `dsh-ops`'s peer range as the version evidence). The earlier rc.2 statement was a historical design-time caliber: the peer range `^0.1.5-rc.2` covers rc.3, and the API surface the adapter uses did not change. The full explanation is plan §7.2.
 - **Protocols.** MCP `2024-11-05`; local API and connector SDK envelopes are `v1`. Unknown fields are rejected on decoded payloads, and a payload declaring a newer version is refused rather than guessed.
@@ -232,22 +234,23 @@ Everything stays on the machine. The core never calls a model and makes no outbo
 
 ## Documentation
 
-| Document | What it answers |
-| --- | --- |
-| [`docs/project-status.md`](docs/project-status.md) / [中文](docs/project-status.zh-CN.md) | What is implemented, verified, blocked and safe to run now |
-| [`docs/workflow/README.md`](docs/workflow/README.md) / [中文](docs/workflow/README.zh-CN.md) | Workflow control center: active issues, file repair order and cleanup audit |
-| [`docs/features-and-implementation.md`](docs/features-and-implementation.md) / [中文](docs/features-and-implementation.zh-CN.md) | What every feature does and which code, contract and data path implements it |
-| [`docs/implementation-plan.md`](docs/implementation-plan.md) / [中文](docs/implementation-plan.zh-CN.md) | Scope, decisions, ordered task cards and acceptance gates |
-| [`docs/connector-matrix.md`](docs/connector-matrix.md) / [中文](docs/connector-matrix.zh-CN.md) | Which host reports which field, measured with pinned versions |
-| [`docs/install.md`](docs/install.md) / [中文](docs/install.zh-CN.md) | Current installation candidate, data locations, upgrade and uninstall |
-| [`docs/toolbox-ui.md`](docs/toolbox-ui.md) / [中文](docs/toolbox-ui.zh-CN.md) | Toolbox UI architecture, implementation status and remaining cards |
-| [`docs/privacy.md`](docs/privacy.md) / [中文](docs/privacy.zh-CN.md) | Data flow, redaction, retention, deletion |
-| [`docs/benchmarks.md`](docs/benchmarks.md) / [中文](docs/benchmarks.zh-CN.md) | Performance gate, dataset, plans, environment |
-| [`docs/test-record.md`](docs/test-record.md) / [中文](docs/test-record.zh-CN.md) | Durable full-suite and Windows acceptance runs |
-| [`docs/acceptance-vm.md`](docs/acceptance-vm.md) / [中文](docs/acceptance-vm.zh-CN.md) | Historical clean-machine record; the live gate is the Windows smoke job |
-| [`docs/e2e-cli-loop.md`](docs/e2e-cli-loop.md) / [中文](docs/e2e-cli-loop.zh-CN.md) | The generic CLI loop, end to end, without a model |
-| [`CHANGELOG.md`](CHANGELOG.md) | What changed in each release |
-| [`packaging/windows/`](packaging/windows) | Build and release scripts for the portable toolbox |
+| Document                                                                                                                         | What it answers                                                                                   |
+| -------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------- |
+| [`docs/project-status.md`](docs/project-status.md) / [中文](docs/project-status.zh-CN.md)                                        | What is implemented, verified, blocked and safe to run now                                        |
+| [`docs/workflow/README.md`](docs/workflow/README.md) / [中文](docs/workflow/README.zh-CN.md)                                     | Workflow control center: active issues, file repair order and cleanup audit                       |
+| [`docs/features-and-implementation.md`](docs/features-and-implementation.md) / [中文](docs/features-and-implementation.zh-CN.md) | What every feature does and which code, contract and data path implements it                      |
+| [`docs/implementation-plan.md`](docs/implementation-plan.md) / [中文](docs/implementation-plan.zh-CN.md)                         | Scope, decisions, ordered task cards and acceptance gates                                         |
+| [`docs/connector-matrix.md`](docs/connector-matrix.md) / [中文](docs/connector-matrix.zh-CN.md)                                  | Which host reports which field, measured with pinned versions                                     |
+| [`docs/install.md`](docs/install.md) / [中文](docs/install.zh-CN.md)                                                             | Current installation candidate, data locations, upgrade and uninstall                             |
+| [`docs/toolbox-ui.md`](docs/toolbox-ui.md) / [中文](docs/toolbox-ui.zh-CN.md)                                                    | Toolbox UI architecture, implementation status and remaining cards                                |
+| [`docs/privacy.md`](docs/privacy.md) / [中文](docs/privacy.zh-CN.md)                                                             | Data flow, redaction, retention, deletion                                                         |
+| [`docs/benchmarks.md`](docs/benchmarks.md) / [中文](docs/benchmarks.zh-CN.md)                                                    | Performance gate, dataset, plans, environment                                                     |
+| [`docs/test-record.md`](docs/test-record.md) / [中文](docs/test-record.zh-CN.md)                                                 | Durable full-suite and Windows acceptance runs                                                    |
+| [`docs/acceptance-vm.md`](docs/acceptance-vm.md) / [中文](docs/acceptance-vm.zh-CN.md)                                           | Historical clean-machine record; the live gate is the Windows smoke job                           |
+| [`docs/e2e-cli-loop.md`](docs/e2e-cli-loop.md) / [中文](docs/e2e-cli-loop.zh-CN.md)                                              | The generic CLI loop, end to end, without a model                                                 |
+| [`docs/prevention.md`](docs/prevention.md) / [中文](docs/prevention.zh-CN.md)                                                    | Unreleased prevention artifacts, verification, activation, recurrence metrics and troubleshooting |
+| [`CHANGELOG.md`](CHANGELOG.md)                                                                                                   | What changed in each release                                                                      |
+| [`packaging/windows/`](packaging/windows)                                                                                        | Build and release scripts for the portable toolbox                                                |
 
 ## Known limitations
 
@@ -258,6 +261,7 @@ These are remaining limitations or deliberate boundaries, not hidden capabilitie
 - **PostgreSQL is a prerequisite.** The core needs a local PostgreSQL 16 server; `errkb pg install` creates a dedicated cluster, but the database is not embedded in the application.
 - **The DSH plugin is pending store review.** Installing it by hand is the supported path for now.
 - **Two measured gaps in the connector matrix:** the DSH `tools/result` live path and the Codex `PostToolUse` hook are unverified.
+- **Prevention activation is not host or CI integration.** Activating an artifact does not install a hook, change CI, edit files or write Git state. MCP registration accepts a caller-supplied hash without proving it against a file; the Web prevention view is read-only.
 
 ## Development
 
@@ -284,4 +288,3 @@ Read the implementation plan first; work happens card by card (`EKB-nnn`), one p
 ## License
 
 [MIT](LICENSE) © jingchangzhao-gif
-

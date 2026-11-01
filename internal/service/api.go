@@ -47,6 +47,7 @@ type Backend interface {
 	PreventionActivate(context.Context, contract.PreventionActivateRequest) (contract.PreventionActivateResponse, error)
 	PreventionList(context.Context, contract.PreventionListRequest) (contract.PreventionListResponse, error)
 	PreventionGet(context.Context, contract.PreventionGetRequest) (contract.PreventionGetResponse, error)
+	PreventionStats(context.Context, contract.PreventionStatsRequest) (contract.PreventionStatsResponse, error)
 }
 
 // The error codes are the closed set from spec/local-api.cue. A caller must be
@@ -236,6 +237,13 @@ func (a *API) Handle(ctx context.Context, frame []byte) []byte {
 			return a.rejectFrame(request.RequestID, request.Operation, APIErrorf(CodeInvalidRequest, "decode the prevention_get payload: %v", err))
 		}
 		response, err := a.backend.PreventionGet(ctx, payload)
+		return a.encodeResult(request, response, err)
+	case contract.OperationPreventionStats:
+		var payload contract.PreventionStatsRequest
+		if err := json.Unmarshal(request.Payload, &payload); err != nil {
+			return a.rejectFrame(request.RequestID, request.Operation, APIErrorf(CodeInvalidRequest, "decode the prevention_stats payload: %v", err))
+		}
+		response, err := a.backend.PreventionStats(ctx, payload)
 		return a.encodeResult(request, response, err)
 	default:
 		// DecodePipeRequest already rejects unknown operations; this branch is

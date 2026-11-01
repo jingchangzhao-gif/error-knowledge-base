@@ -343,3 +343,16 @@ func (c *Client) PreventionGet(ctx context.Context, request contract.PreventionG
 	}
 	return response, nil
 }
+
+// PreventionStats returns observed recurrence and verification statistics.
+func (c *Client) PreventionStats(ctx context.Context, request contract.PreventionStatsRequest) (contract.PreventionStatsResponse, error) {
+	payload, err := c.Call(ctx, contract.OperationPreventionStats, request)
+	if err != nil {
+		return contract.PreventionStatsResponse{}, err
+	}
+	var response contract.PreventionStatsResponse
+	if err := decodePreventionResult(payload, contract.OperationPreventionStats, &response); err != nil {
+		return contract.PreventionStatsResponse{}, err
+	}
+	return response, nil
+}

@@ -453,6 +453,62 @@ func (b *SQLBackend) PreventionGet(ctx context.Context, request contract.Prevent
 	return response, nil
 }
 
+// PreventionStats returns observed prevention metrics without caller-supplied time.
+func (b *SQLBackend) PreventionStats(ctx context.Context, request contract.PreventionStatsRequest) (contract.PreventionStatsResponse, error) {
+	if err := request.Validate(); err != nil {
+		return contract.PreventionStatsResponse{}, APIErrorf(CodeInvalidRequest, "%v", err)
+	}
+	var stored database.PreventionStatsSummary
+	err := b.withConn(ctx, func(ctx context.Context, conn *pgx.Conn) error {
+		stats, err := database.PreventionStats(ctx, conn, database.PreventionFilter{ProjectKey: request.ProjectKey, IssueID: request.IssueID})
+		if err == nil {
+			stored = stats
+		}
+		return err
+	})
+	if err != nil {
+		return contract.PreventionStatsResponse{}, translateBackendError("prevention_stats", err)
+	}
+	response := mapPreventionStats(stored)
+	if err := response.Validate(); err != nil {
+		return contract.PreventionStatsResponse{}, APIErrorf(CodeInternal, "prevention_stats response: %v", err)
+	}
+	return response, nil
+}
+
+func mapPreventionStats(stats database.PreventionStatsSummary) contract.PreventionStatsResponse {
+	response := contract.PreventionStatsResponse{
+		SchemaVersion:    contract.PreventionSchemaVersion,
+		ByStatus:         make([]contract.PreventionCount, 0, len(stats.ByStatus)),
+		ByKind:           make([]contract.PreventionCount, 0, len(stats.ByKind)),
+		VerificationRuns: stats.VerificationRuns, VerificationPassed: stats.VerificationPassed,
+		VerificationPassRate: stats.VerificationPassRate,
+		Activations:          make([]contract.PreventionActivationStats, 0, len(stats.Activations)),
+		MatureActivations:    stats.MatureActivations, MatureZeroRecurrence: stats.MatureZeroRecurrence,
+		RecurringVersionIDs: append([]string{}, stats.RecurringVersionIDs...),
+	}
+	for _, count := range stats.ByStatus {
+		response.ByStatus = append(response.ByStatus, contract.PreventionCount{Name: count.Name, Count: count.Count})
+	}
+	for _, count := range stats.ByKind {
+		response.ByKind = append(response.ByKind, contract.PreventionCount{Name: count.Name, Count: count.Count})
+	}
+	for _, activation := range stats.Activations {
+		response.Activations = append(response.Activations, contract.PreventionActivationStats{
+			IssueID: activation.IssueID, ArtifactID: activation.ArtifactID, ArtifactVersionID: activation.ArtifactVersionID,
+			ActivatedAt: activation.ActivatedAt.UTC().Format(time.RFC3339), CommitSHA: activation.CommitSHA, Status: activation.Status,
+			FirstSeenToActivationMS: activation.FirstSeenToActivationMS, RecurrenceCount: activation.RecurrenceCount,
+			BeforeCount: activation.BeforeCount, AfterCount: activation.AfterCount,
+			BeforeDays: activation.BeforeDays, AfterDays: activation.AfterDays, ObservationStatus: activation.ObservationStatus,
+		})
+	}
+	if stats.MatureProtectionRate != nil {
+		rate := *stats.MatureProtectionRate
+		response.MatureProtectionRate = &rate
+	}
+	return response
+}
+
 func mapPreventionArtifact(artifact database.PreventionArtifact) contract.PreventionArtifact {
 	issueIDs := append([]string{}, artifact.IssueIDs...)
 	return contract.PreventionArtifact{

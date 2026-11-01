@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"crypto/sha256"
+	"encoding/json"
 	"fmt"
 	"os"
 	"os/exec"
@@ -13,6 +14,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/jingchangzhao-gif/error-knowledge-base/internal/contract"
 	"github.com/jingchangzhao-gif/error-knowledge-base/internal/database"
 )
 
@@ -329,5 +331,67 @@ func TestPreventionGitUsesOnlyReadOnlyOperations(t *testing.T) {
 				t.Fatalf("prevention service contains forbidden git operation %s", forbidden)
 			}
 		}
+	}
+}
+
+func preventionStatsContractResponse() contract.PreventionStatsResponse {
+	return contract.PreventionStatsResponse{
+		SchemaVersion: "v1", ByStatus: []contract.PreventionCount{{Name: "active", Count: 1}},
+		ByKind:           []contract.PreventionCount{{Name: "regression_test", Count: 1}},
+		VerificationRuns: 2, VerificationPassed: 1, VerificationPassRate: 0.5,
+		Activations: []contract.PreventionActivationStats{{
+			IssueID: "issue-1", ArtifactID: "artifact-1", ArtifactVersionID: "version-1",
+			ActivatedAt: "2026-10-30T00:01:00Z", CommitSHA: strings.Repeat("1", 40), Status: "active",
+			ObservationStatus: "observing",
+		}},
+		MatureProtectionRate: nil, RecurringVersionIDs: []string{},
+	}
+}
+
+func (f *fakeBackend) PreventionStats(context.Context, contract.PreventionStatsRequest) (contract.PreventionStatsResponse, error) {
+	f.note(contract.OperationPreventionStats)
+	if f.err != nil {
+		return contract.PreventionStatsResponse{}, f.err
+	}
+	return preventionStatsContractResponse(), nil
+}
+
+func (b *preventionAPIBackend) PreventionStats(context.Context, contract.PreventionStatsRequest) (contract.PreventionStatsResponse, error) {
+	b.operations = append(b.operations, contract.OperationPreventionStats)
+	return preventionStatsContractResponse(), nil
+}
+
+func TestPreventionStatsAPIAndMapping(t *testing.T) {
+	backend := &preventionAPIBackend{}
+	response := callPreventionAPI(t, NewAPI(backend), "stats-1", contract.OperationPreventionStats,
+		contract.PreventionStatsRequest{SchemaVersion: "v1", ProjectKey: "proj-a", IssueID: "issue-1"})
+	if response.Error != nil || len(backend.operations) != 1 || backend.operations[0] != contract.OperationPreventionStats {
+		t.Fatalf("stats API response = %+v, operations = %v", response, backend.operations)
+	}
+	var decoded contract.PreventionStatsResponse
+	if err := json.Unmarshal(response.Result, &decoded); err != nil {
+		t.Fatal(err)
+	}
+	if err := decoded.Validate(); err != nil || decoded.MatureProtectionRate != nil || decoded.Activations[0].ObservationStatus != "observing" {
+		t.Fatalf("stats contract = %+v, %v", decoded, err)
+	}
+
+	activated := time.Date(2026, 10, 1, 0, 0, 0, 0, time.UTC)
+	mapped := mapPreventionStats(database.PreventionStatsSummary{
+		ByStatus: []database.PreventionCount{}, ByKind: []database.PreventionCount{},
+		Activations: []database.PreventionActivationStats{{
+			IssueID: "issue-1", ArtifactID: "artifact-1", ArtifactVersionID: "version-1", ActivatedAt: activated,
+			CommitSHA: strings.Repeat("1", 40), Status: "active", ObservationStatus: "observing",
+		}},
+		RecurringVersionIDs: []string{},
+	})
+	if mapped.SchemaVersion != "v1" || mapped.ByStatus == nil || mapped.ByKind == nil || mapped.Activations[0].ActivatedAt != activated.Format(time.RFC3339) || mapped.MatureProtectionRate != nil {
+		t.Fatalf("mapped stats = %+v", mapped)
+	}
+	if err := mapped.Validate(); err != nil {
+		t.Fatalf("mapped stats violate contract: %v", err)
+	}
+	if _, err := NewSQLBackend(nil).PreventionStats(context.Background(), contract.PreventionStatsRequest{SchemaVersion: "v2"}); !preventionAPIErrorCode(err, CodeInvalidRequest) {
+		t.Fatalf("invalid stats request = %v, want invalid_request", err)
 	}
 }

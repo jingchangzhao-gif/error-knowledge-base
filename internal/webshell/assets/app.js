@@ -605,6 +605,77 @@ function metricRow(label, value, note, isAlert) {
   );
 }
 
+function renderPreventionStats(stats) {
+  const byStatus = stats.by_status || [];
+  const byKind = stats.by_kind || [];
+  const activations = stats.activations || [];
+  const recurring = stats.recurring_version_ids || [];
+  const matureRate = stats.mature_protection_rate;
+  const matureText =
+    matureRate === null || typeof matureRate === "undefined"
+      ? "暂无成熟记录"
+      : percent(stats.mature_zero_recurrence, stats.mature_activations) +
+        " (" +
+        number(stats.mature_zero_recurrence) +
+        "/" +
+        number(stats.mature_activations) +
+        ")";
+  return (
+    "<h2>Prevention</h2>" +
+    '<p class="meta">kind: ' +
+    (byKind
+      .map((row) => escapeText(row.name) + "=" + number(row.count))
+      .join(", ") || "none") +
+    " · status: " +
+    (byStatus
+      .map((row) => escapeText(row.name) + "=" + number(row.count))
+      .join(", ") || "none") +
+    "</p>" +
+    '<p class="meta">verification passed ' +
+    number(stats.verification_passed) +
+    "/" +
+    number(stats.verification_runs) +
+    " (" +
+    percent(stats.verification_passed, stats.verification_runs) +
+    ") · mature zero-recurrence: " +
+    matureText +
+    "</p>" +
+    '<table class="metrics"><thead><tr><th>issue / version</th><th>state</th><th>before</th><th>after</th><th>recurrence</th></tr></thead><tbody>' +
+    (activations
+      .map((row) => {
+        const state =
+          row.observation_status === "observing" ? "观察中" : "mature";
+        return (
+          "<tr><td>" +
+          escapeText(row.issue_id || "") +
+          "<br><code>" +
+          escapeText(row.artifact_version_id || "") +
+          "</code><br>" +
+          escapeText(row.status || "") +
+          "</td><td>" +
+          state +
+          "</td><td>" +
+          number(row.before_count) +
+          " / " +
+          number(row.before_days) +
+          "d</td><td>" +
+          number(row.after_count) +
+          " / " +
+          number(row.after_days) +
+          "d</td><td>" +
+          number(row.recurrence_count) +
+          "</td></tr>"
+        );
+      })
+      .join("") || '<tr><td colspan="5">no activated preventions</td></tr>') +
+    "</tbody></table>" +
+    '<p class="meta">recurring active versions: ' +
+    (recurring.map((id) => "<code>" + escapeText(id) + "</code>").join(", ") ||
+      "none") +
+    "</p>"
+  );
+}
+
 function renderStatsPage(stats) {
   const retrieval = stats.Retrieval || {};
   const solutions = stats.Solutions || {};
@@ -706,6 +777,7 @@ function renderStatsPage(stats) {
         .join(", ") || "none; queue and connector faults have no table yet",
     ) +
     "</table>" +
+    '<section id="prevention-stats"><h2>Prevention</h2><p class="meta">loading…</p></section>' +
     "<h2>Savings</h2>" +
     '<p class="meta measured">measured · ' +
     number(injections.Characters) +
@@ -797,8 +869,22 @@ async function loadStatsPage() {
   const main = mainElement();
   main.innerHTML = '<p id="status" role="status">loading…</p>';
   try {
-    const payload = await fetchJSON("/api/stats");
-    main.innerHTML = renderStatsPage(payload.stats || {});
+    const [coreResult, preventionResult] = await Promise.allSettled([
+      fetchJSON("/api/stats"),
+      fetchJSON("/api/preventions/stats"),
+    ]);
+    if (coreResult.status === "rejected") throw coreResult.reason;
+    main.innerHTML = renderStatsPage(coreResult.value.stats || {});
+    const preventionSection = document.querySelector("#prevention-stats");
+    preventionSection.innerHTML =
+      preventionResult.status === "fulfilled"
+        ? renderPreventionStats(preventionResult.value || {})
+        : '<h2>Prevention</h2><p class="error">' +
+          escapeText(
+            preventionResult.reason.message ||
+              "could not load prevention statistics",
+          ) +
+          "</p>";
     const form = document.querySelector("#audit-filter");
     if (form)
       form.addEventListener("submit", (event) => {

@@ -591,6 +591,10 @@ func FormatDeleteCounts(counts database.DeleteCounts) string {
 		fmt.Sprintf("%d outcome(s)", counts.Outcomes),
 		fmt.Sprintf("%d retrieval(s)", counts.Retrievals),
 		fmt.Sprintf("%d notice(s)", counts.Notices),
+		fmt.Sprintf("%d prevention artifact(s)", counts.PreventionArtifacts),
+		fmt.Sprintf("%d prevention version(s)", counts.PreventionArtifactVersions),
+		fmt.Sprintf("%d prevention link(s)", counts.IssuePreventions),
+		fmt.Sprintf("%d prevention verification(s)", counts.PreventionVerifications),
 	}
 	return strings.Join(parts, ", ")
 }
@@ -665,7 +669,9 @@ func intValue(value *int) int {
 
 func totalDeleteCounts(counts database.DeleteCounts) int64 {
 	return counts.Issues + counts.Solutions + counts.SolutionVersions + counts.Outcomes +
-		counts.Retrievals + counts.Notices + counts.Occurrences + counts.Events
+		counts.Retrievals + counts.Notices + counts.Occurrences + counts.Events +
+		counts.PreventionArtifacts + counts.PreventionArtifactVersions +
+		counts.IssuePreventions + counts.PreventionVerifications
 }
 
 func sameDeleteCounts(a, b database.DeleteCounts) bool { return a == b }

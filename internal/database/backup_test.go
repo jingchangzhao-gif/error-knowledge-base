@@ -111,6 +111,22 @@ func TestBackupRestoreIntoEmptyDatabase(t *testing.T) {
 	}
 	insertAuditRow(t, source, time.Now().UTC(), "test.seed")
 
+	if _, err := source.Exec(ctx, `update issues set status = 'resolved' where id = $1`, issueID); err != nil {
+		t.Fatalf("resolve the prevention issue: %v", err)
+	}
+	registered := registerPrevention(t, source, preventionRegistration(issueID))
+	verifyPrevention(t, source, registered.Version.ArtifactVersionID, false)
+	verifyPrevention(t, source, registered.Version.ArtifactVersionID, true)
+	activatePrevention(t, source, registered.Version.ArtifactVersionID, preventionCommitA)
+	changed := preventionRegistration(issueID)
+	changed.ContentSHA256 = preventionHashB
+	secondVersion := registerPrevention(t, source, changed)
+	secondIssue := preventionIssue(t, source, "proj", "resolved")
+	linked := registerPrevention(t, source, preventionRegistration(secondIssue))
+	if linked.Artifact.ArtifactID != registered.Artifact.ArtifactID {
+		t.Fatalf("linked artifact = %s, want %s", linked.Artifact.ArtifactID, registered.Artifact.ArtifactID)
+	}
+
 	dir := t.TempDir()
 	manifest, err := database.BackupDatabase(ctx, source, dir)
 	if err != nil {
@@ -129,8 +145,16 @@ func TestBackupRestoreIntoEmptyDatabase(t *testing.T) {
 	if len(manifest.SHA256) != 64 {
 		t.Fatalf("sha256 = %q, want 64 hex characters", manifest.SHA256)
 	}
-	if manifest.Tables["events"] != 3 || manifest.Tables["issues"] != 1 {
-		t.Fatalf("manifest counts = %v, want 3 events and 1 issue", manifest.Tables)
+	if manifest.Tables["events"] != 3 || manifest.Tables["issues"] != 2 {
+		t.Fatalf("manifest counts = %v, want 3 events and 2 issues", manifest.Tables)
+	}
+	for table, want := range map[string]int64{
+		"prevention_artifacts": 1, "prevention_artifact_versions": 2,
+		"issue_preventions": 2, "prevention_verifications": 2,
+	} {
+		if manifest.Tables[table] != want {
+			t.Errorf("manifest %s = %d, want %d", table, manifest.Tables[table], want)
+		}
 	}
 	dumpPath := filepath.Join(dir, manifest.Dump)
 	info, err := os.Stat(dumpPath)
@@ -183,6 +207,45 @@ func TestBackupRestoreIntoEmptyDatabase(t *testing.T) {
 	var title string
 	if err := restoredConn.QueryRow(ctx, "select title from issues limit 1").Scan(&title); err != nil || title == "" {
 		t.Fatalf("restored issue title = %q (%v)", title, err)
+	}
+	detail, err := database.GetPrevention(ctx, restoredConn, registered.Artifact.ArtifactID)
+	if err != nil {
+		t.Fatalf("read the restored prevention: %v", err)
+	}
+	if detail.Artifact.ProjectKey != "proj" || detail.Artifact.Kind != "regression_test" ||
+		detail.Artifact.Title != "rename regression" || len(detail.Artifact.IssueIDs) != 2 ||
+		len(detail.Versions) != 2 || len(detail.Verifications) != 2 {
+		t.Fatalf("restored prevention detail = %+v", detail)
+	}
+	versions := map[int]database.PreventionVersion{}
+	for _, version := range detail.Versions {
+		versions[version.Version] = version
+	}
+	active := versions[1]
+	if active.ArtifactVersionID != registered.Version.ArtifactVersionID || active.Status != "active" ||
+		active.ContentSHA256 != preventionHashA || active.CommitSHA == nil || *active.CommitSHA != preventionCommitA ||
+		active.ActivatedAt == nil || active.ArtifactPath != "tests/rename_test.go" {
+		t.Fatalf("restored active version = %+v", active)
+	}
+	draft := versions[2]
+	if draft.ArtifactVersionID != secondVersion.Version.ArtifactVersionID || draft.Status != "draft" ||
+		draft.ContentSHA256 != preventionHashB || draft.CommitSHA != nil || draft.ActivatedAt != nil {
+		t.Fatalf("restored draft version = %+v", draft)
+	}
+	verificationOutcomes := map[bool]int{}
+	for _, verification := range detail.Verifications {
+		verificationOutcomes[verification.Passed]++
+		if verification.ArtifactVersionID != active.ArtifactVersionID || verification.ContentSHA256 != preventionHashA ||
+			verification.Evidence != "verification evidence" || verification.Environment["os"] != "windows" ||
+			verification.DurationMS != 12 || verification.ExitCode == nil {
+			t.Fatalf("restored verification = %+v", verification)
+		}
+	}
+	if verificationOutcomes[true] != 1 || verificationOutcomes[false] != 1 {
+		t.Fatalf("restored verification outcomes = %v", verificationOutcomes)
+	}
+	if got, want := preventionAuditCount(t, restoredConn), preventionAuditCount(t, source); got != want || got < 6 {
+		t.Fatalf("restored prevention audit rows = %d, source = %d", got, want)
 	}
 
 	// Restoring twice into the same database must be refused: an empty database
@@ -237,6 +300,15 @@ func TestDeleteByProjectKeepsAudit(t *testing.T) {
 	recordEvents(t, conn, connectorID, sessionID, "alpha", 1, "eperm rename alpha one", "eperm rename alpha one")
 	recordEvents(t, conn, connectorID, sessionID, "beta", 10, "eperm rename beta one")
 	survivor := insertAuditRow(t, conn, time.Now().UTC(), "test.survivor")
+	alphaIssue := issueIDForProject(t, conn, "alpha")
+	if _, err := conn.Exec(ctx, `update issues set status = 'resolved' where id = $1`, alphaIssue); err != nil {
+		t.Fatalf("resolve deletion fixture issue: %v", err)
+	}
+	secondAlphaIssue := preventionIssue(t, conn, "alpha", "resolved")
+	registered := registerPrevention(t, conn, preventionRegistration(alphaIssue))
+	verifyPrevention(t, conn, registered.Version.ArtifactVersionID, true)
+	activatePrevention(t, conn, registered.Version.ArtifactVersionID, preventionCommitA)
+	registerPrevention(t, conn, preventionRegistration(secondAlphaIssue))
 
 	if _, err := database.PreviewDelete(ctx, conn, database.DeleteScope{}); err == nil || !strings.Contains(err.Error(), "at least one") {
 		t.Fatalf("preview without a filter = %v, want a rejection", err)
@@ -247,8 +319,10 @@ func TestDeleteByProjectKeepsAudit(t *testing.T) {
 	if err != nil {
 		t.Fatalf("preview: %v", err)
 	}
-	if preview.Issues != 1 || preview.Events != 2 || preview.Occurrences != 2 {
-		t.Fatalf("preview = %+v, want 1 issue, 2 events, 2 occurrences", preview)
+	if preview.Issues != 2 || preview.Events != 2 || preview.Occurrences != 2 ||
+		preview.PreventionArtifacts != 1 || preview.PreventionArtifactVersions != 1 ||
+		preview.IssuePreventions != 2 || preview.PreventionVerifications != 1 {
+		t.Fatalf("preview = %+v, want issue evidence and the complete prevention chain", preview)
 	}
 	counts, err := database.DeleteScoped(ctx, conn, scope)
 	if err != nil {
@@ -266,6 +340,12 @@ func TestDeleteByProjectKeepsAudit(t *testing.T) {
 	if got := queryInt(t, conn, `select count(*) from issues where project_key = 'beta'`); got != 1 {
 		t.Errorf("beta issues after delete = %d, want 1", got)
 	}
+	if got := rowCount(t, conn, "prevention_artifacts"); got != 0 {
+		t.Errorf("prevention artifacts after project delete = %d, want 0", got)
+	}
+	if got := queryInt(t, conn, fmt.Sprintf(`select count(*) from issue_preventions where issue_id = '%s'`, secondAlphaIssue)); got != 0 {
+		t.Errorf("cross-issue links after project delete = %d, want 0", got)
+	}
 	// The audit trail survives business deletion, including the row the delete
 	// itself just wrote.
 	if got := queryInt(t, conn, fmt.Sprintf(`select count(*) from audit_log where id = %d`, survivor)); got != 1 {
@@ -281,7 +361,11 @@ func TestDeleteByProjectKeepsAudit(t *testing.T) {
 	if operator != "owner" {
 		t.Errorf("delete actor = %q, want owner", operator)
 	}
-	for _, want := range []string{`"events": 2`, `"issues": 1`, `"project_key": "alpha"`} {
+	for _, want := range []string{
+		`"events": 2`, `"issues": 2`, `"project_key": "alpha"`,
+		`"prevention_artifacts": 1`, `"prevention_artifact_versions": 1`,
+		`"issue_preventions": 2`, `"prevention_verifications": 1`,
+	} {
 		if !strings.Contains(detail, want) {
 			t.Errorf("delete audit detail %s does not contain %s", detail, want)
 		}
@@ -299,16 +383,31 @@ func TestDeleteByTimeBoundaryIsExclusive(t *testing.T) {
 			t.Fatalf("record at %s: %v", observed, err)
 		}
 	}
+	var issueID string
+	if err := conn.QueryRow(ctx, `select o.issue_id from occurrences o join events e on e.event_id = o.event_id where e.observed_at = $1`, cutoff.Add(-time.Hour)).Scan(&issueID); err != nil {
+		t.Fatalf("read old issue: %v", err)
+	}
+	if _, err := conn.Exec(ctx, `update issues set status = 'resolved' where id = $1`, issueID); err != nil {
+		t.Fatal(err)
+	}
+	registered := registerPrevention(t, conn, preventionRegistration(issueID))
+	verifyPrevention(t, conn, registered.Version.ArtifactVersionID, true)
+	activatePrevention(t, conn, registered.Version.ArtifactVersionID, preventionCommitA)
 	scope := database.DeleteScope{Before: &cutoff, Actor: "owner"}
 	preview, err := database.PreviewDelete(ctx, conn, scope)
 	if err != nil {
 		t.Fatalf("preview: %v", err)
 	}
-	if preview.Events != 1 || preview.Occurrences != 1 {
-		t.Fatalf("preview = %+v, want the one event strictly before the cutoff", preview)
+	if preview.Events != 1 || preview.Occurrences != 1 || preview.PreventionArtifacts != 0 ||
+		preview.PreventionArtifactVersions != 0 || preview.IssuePreventions != 0 || preview.PreventionVerifications != 0 {
+		t.Fatalf("preview = %+v, want one old event and no prevention rows", preview)
 	}
-	if _, err := database.DeleteScoped(ctx, conn, scope); err != nil {
+	counts, err := database.DeleteScoped(ctx, conn, scope)
+	if err != nil {
 		t.Fatalf("delete: %v", err)
+	}
+	if counts != preview {
+		t.Fatalf("deleted %+v, preview said %+v", counts, preview)
 	}
 	var remaining int
 	if err := conn.QueryRow(ctx, `select count(*) from events where observed_at = $1`, cutoff).Scan(&remaining); err != nil {
@@ -320,6 +419,10 @@ func TestDeleteByTimeBoundaryIsExclusive(t *testing.T) {
 	if got := rowCount(t, conn, "events"); got != 2 {
 		t.Fatalf("events after delete = %d, want 2", got)
 	}
+	version, err := database.GetPreventionVersion(ctx, conn, registered.Version.ArtifactVersionID)
+	if err != nil || version.Status != "active" {
+		t.Fatalf("time deletion changed active prevention: %+v, %v", version, err)
+	}
 }
 
 func TestDeleteByConnector(t *testing.T) {
@@ -329,13 +432,32 @@ func TestDeleteByConnector(t *testing.T) {
 	secondSession := insertTestSession(t, conn, secondConnector)
 	recordEvents(t, conn, connectorID, sessionID, "proj", 1, "first connector failure")
 	recordEvents(t, conn, secondConnector, secondSession, "proj", 10, "second connector failure")
+	var issueID string
+	if err := conn.QueryRow(ctx, `select issue_id from occurrences where connector_id = $1`, connectorID).Scan(&issueID); err != nil {
+		t.Fatalf("read connector issue: %v", err)
+	}
+	if _, err := conn.Exec(ctx, `update issues set status = 'resolved' where id = $1`, issueID); err != nil {
+		t.Fatal(err)
+	}
+	registered := registerPrevention(t, conn, preventionRegistration(issueID))
+	verifyPrevention(t, conn, registered.Version.ArtifactVersionID, true)
+	activatePrevention(t, conn, registered.Version.ArtifactVersionID, preventionCommitA)
 
-	counts, err := database.DeleteScoped(ctx, conn, database.DeleteScope{ConnectorID: connectorID, Actor: "owner"})
+	scope := database.DeleteScope{ConnectorID: connectorID, Actor: "owner"}
+	preview, err := database.PreviewDelete(ctx, conn, scope)
+	if err != nil {
+		t.Fatalf("preview: %v", err)
+	}
+	if preview.Events != 1 || preview.Occurrences != 1 || preview.PreventionArtifacts != 0 ||
+		preview.PreventionArtifactVersions != 0 || preview.IssuePreventions != 0 || preview.PreventionVerifications != 0 {
+		t.Fatalf("preview = %+v, want evidence only and no prevention rows", preview)
+	}
+	counts, err := database.DeleteScoped(ctx, conn, scope)
 	if err != nil {
 		t.Fatalf("delete: %v", err)
 	}
-	if counts.Events != 1 || counts.Occurrences != 1 {
-		t.Fatalf("deleted %+v, want one event and one occurrence", counts)
+	if counts != preview {
+		t.Fatalf("deleted %+v, preview said %+v", counts, preview)
 	}
 	if got := queryInt(t, conn, fmt.Sprintf(`select count(*) from events where connector_id = '%s'`, connectorID)); got != 0 {
 		t.Errorf("the deleted connector still has %d events", got)
@@ -347,6 +469,10 @@ func TestDeleteByConnector(t *testing.T) {
 	// not silently remove the issue history of the other connector.
 	if got := rowCount(t, conn, "issues"); got != 2 {
 		t.Errorf("issues after delete = %d, want 2", got)
+	}
+	version, err := database.GetPreventionVersion(ctx, conn, registered.Version.ArtifactVersionID)
+	if err != nil || version.Status != "active" {
+		t.Fatalf("connector deletion changed active prevention: %+v, %v", version, err)
 	}
 }
 
@@ -408,6 +534,43 @@ func TestRetentionSplitsThreeClasses(t *testing.T) {
 	var pgErr *pgconn.PgError
 	if !errors.As(err, &pgErr) || pgErr.Code != "55000" {
 		t.Fatalf("direct audit delete = %v, want SQLSTATE 55000 from the guard", err)
+	}
+}
+
+func TestRetentionKeepsActivePreventionAndUsesRemainingOccurrences(t *testing.T) {
+	conn, _ := preventionSchema(t)
+	ctx := context.Background()
+	now := time.Now().UTC()
+	issueID := preventionIssue(t, conn, "proj", "resolved")
+	registered := preventionActiveAt(t, conn, preventionRegistration(issueID), now.Add(-200*24*time.Hour))
+	preventionOccurrence(t, conn, issueID, now.Add(-100*24*time.Hour))
+	preventionOccurrence(t, conn, issueID, now)
+
+	before, err := database.PreventionStatsAt(ctx, conn, database.PreventionFilter{IssueID: issueID}, now)
+	if err != nil || len(before.Activations) != 1 || before.Activations[0].RecurrenceCount != 2 {
+		t.Fatalf("stats before retention = %+v, %v", before, err)
+	}
+	report, err := database.ApplyRetention(ctx, conn, database.RetentionPolicy{SampleDays: 7, NormalizedDays: 90, AuditDays: 365}, now)
+	if err != nil {
+		t.Fatalf("apply retention: %v", err)
+	}
+	if report.EventsRemoved != 1 {
+		t.Fatalf("retention report = %+v, want the one expired occurrence event", report)
+	}
+	version, err := database.GetPreventionVersion(ctx, conn, registered.Version.ArtifactVersionID)
+	if err != nil || version.Status != "active" {
+		t.Fatalf("retention changed active prevention: %+v, %v", version, err)
+	}
+	after, err := database.PreventionStatsAt(ctx, conn, database.PreventionFilter{IssueID: issueID}, now)
+	if err != nil || len(after.Activations) != 1 {
+		t.Fatalf("stats after retention = %+v, %v", after, err)
+	}
+	activation := after.Activations[0]
+	// The surviving occurrence is outside the activation's 30-day after window,
+	// but it remains visible in the all-time recurrence count.
+	if activation.RecurrenceCount != 1 || activation.AfterCount != 0 || activation.ObservationStatus != "mature" ||
+		after.MatureActivations != 1 || after.MatureZeroRecurrence != 1 || after.MatureProtectionRate == nil || *after.MatureProtectionRate != 1 {
+		t.Fatalf("post-retention stats do not reflect remaining occurrences: %+v", after)
 	}
 }
 

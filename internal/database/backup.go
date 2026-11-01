@@ -61,6 +61,10 @@ var BusinessTables = []string{
 	"sessions",
 	"events",
 	"issues",
+	"prevention_artifacts",
+	"prevention_artifact_versions",
+	"issue_preventions",
+	"prevention_verifications",
 	"occurrences",
 	"solutions",
 	"solution_versions",
@@ -143,14 +147,18 @@ type DeleteScope struct {
 // DeleteCounts is the preview and the result of a scoped deletion, table by
 // table. Audit rows are never deleted by a scope.
 type DeleteCounts struct {
-	Issues           int64
-	Solutions        int64
-	SolutionVersions int64
-	Outcomes         int64
-	Retrievals       int64
-	Notices          int64
-	Occurrences      int64
-	Events           int64
+	Issues                     int64
+	Solutions                  int64
+	SolutionVersions           int64
+	Outcomes                   int64
+	Retrievals                 int64
+	Notices                    int64
+	Occurrences                int64
+	Events                     int64
+	PreventionArtifacts        int64
+	PreventionArtifactVersions int64
+	IssuePreventions           int64
+	PreventionVerifications    int64
 }
 
 func (scope DeleteScope) args() (any, any, any, error) {
@@ -218,6 +226,14 @@ func scanDeleteCounts(rows pgx.Rows) (DeleteCounts, error) {
 			return DeleteCounts{}, fmt.Errorf("deletion: %w", err)
 		}
 		switch kind {
+		case "prevention_artifacts":
+			counts.PreventionArtifacts = value
+		case "prevention_artifact_versions":
+			counts.PreventionArtifactVersions = value
+		case "issue_preventions":
+			counts.IssuePreventions = value
+		case "prevention_verifications":
+			counts.PreventionVerifications = value
 		case "issues":
 			counts.Issues = value
 		case "solutions":

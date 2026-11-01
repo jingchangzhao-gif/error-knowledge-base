@@ -198,6 +198,22 @@ func TestCLIPreventionLoop(t *testing.T) {
 	}
 	assertPreventionGitState(t, repo, initialHead, "")
 
+	statsOutput, statsCode := runCLI(t, binary, pipeName, "prevention", "stats", "--issue", issueID, "--json")
+	var stats contract.PreventionStatsResponse
+	if statsCode != 0 || json.Unmarshal([]byte(statsOutput), &stats) != nil {
+		t.Fatalf("prevention stats exit=%d output=%s", statsCode, statsOutput)
+	}
+	if err := stats.Validate(); err != nil || len(stats.Activations) != 1 {
+		t.Fatalf("prevention stats response=%+v err=%v", stats, err)
+	}
+	observation := stats.Activations[0]
+	if observation.ArtifactVersionID != added.Version.ArtifactVersionID || observation.RecurrenceCount != 1 || observation.ObservationStatus != "observing" || observation.AfterDays != 0 || stats.MatureActivations != 0 || stats.MatureProtectionRate != nil {
+		t.Fatalf("recurrence observation=%+v mature=%d rate=%v", observation, stats.MatureActivations, stats.MatureProtectionRate)
+	}
+	if len(stats.RecurringVersionIDs) != 1 || stats.RecurringVersionIDs[0] != added.Version.ArtifactVersionID {
+		t.Fatalf("recurring active versions=%v", stats.RecurringVersionIDs)
+	}
+
 	// Active versions cannot be re-verified. Register a committed v2 to prove
 	// that failed and timed-out runs are appended and block its activation while
 	// leaving the already-active v1 untouched.

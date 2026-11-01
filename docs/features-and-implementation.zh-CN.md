@@ -35,37 +35,38 @@ DSH 插件      Claude Hook      Codex/MCP      CLI 包装器      日志/手工
 
 ## 2. 各语言负责什么
 
-| 技术 | 职责 | 主要位置 |
-| --- | --- | --- |
-| Go | 运行时核心、CLI、daemon、Named Pipe API、采集流水线、检索编排、MCP 服务、原生 UI 模型和 Web 壳 | `cmd/errkb/`、`internal/` |
-| PL/pgSQL | 事务化记录、精确/三元组候选查询、可信度计算、保留期和定向删除 | `db/migrations/` |
-| CUE | 事件、配置、连接器能力、本地 API 与 MCP 工具的唯一契约 | `spec/` |
-| TypeScript | 原始 DSH 插件、DSH Hook、宿主侧提示注入、适配器队列和旧 Markdown 回退 | `src/` |
-| HTML/CSS/JavaScript | 开发中的 Windows 工具箱浏览器呈现层 | `internal/webshell/assets/` |
+| 技术                | 职责                                                                                           | 主要位置                    |
+| ------------------- | ---------------------------------------------------------------------------------------------- | --------------------------- |
+| Go                  | 运行时核心、CLI、daemon、Named Pipe API、采集流水线、检索编排、MCP 服务、原生 UI 模型和 Web 壳 | `cmd/errkb/`、`internal/`   |
+| PL/pgSQL            | 事务化记录、精确/三元组候选查询、可信度计算、保留期和定向删除                                  | `db/migrations/`            |
+| CUE                 | 事件、配置、连接器能力、本地 API 与 MCP 工具的唯一契约                                         | `spec/`                     |
+| TypeScript          | 原始 DSH 插件、DSH Hook、宿主侧提示注入、适配器队列和旧 Markdown 回退                          | `src/`                      |
+| HTML/CSS/JavaScript | 开发中的 Windows 工具箱浏览器呈现层                                                            | `internal/webshell/assets/` |
 
 CUE 定义数据形状和约束，不是运行时数据库；PL/pgSQL 保证数据操作的原子性，不负责界面；Go 是中央可执行程序；TypeScript 继续承担 DSH 宿主适配。
 
 ## 3. 功能总表
 
-| 用户功能 | 使用入口 | 主要实现 | 当前状态 |
-| --- | --- | --- | --- |
-| 采集失败的 CLI 命令 | `errkb run -- <command>` | `cmd/errkb/run.go`、`internal/capture/run.go` | 已实现并通过端到端测试 |
-| 采集宿主或工具失败 | DSH Hook、Claude Hook 配置、连接器 SDK | `src/plugin.ts`、`src/connector.ts`、`internal/capture/connector.go`、`connectors/` | 已实现；支持范围以实测矩阵为准 |
-| 采集普通日志 | Tailer 组件和连接器模板 | `internal/capture/tail.go`、`connectors/templates/cli-log/` | 组件已实现；通用宿主实机验收未完整完成 |
-| 入库前删除敏感信息 | 所有采集与记录路径 | `spec/redact.cue`、`internal/redact/`、`src/redact.ts` | 已实现并通过语料测试 |
-| 对技术失败分类 | 采集流水线 | `internal/core/classify.go`、`src/capture.ts` | 已实现，范围限于可观察技术错误 |
-| 合并重复失败 | 按项目和指纹记录事件 | `internal/core/fingerprint.go`、`db/migrations/0002_record.sql` | 已实现 |
-| 搜索已知错误 | CLI、MCP、原生搜索框、Web 搜索 | `internal/database/search.go`、`candidates.go`、`rerank.go` | CLI/MCP 与 Web 工具箱均已实现 |
-| 记录并版本化解法 | MCP `err_record_solution`、服务/数据库 API、Web 详情编辑器 | `internal/database/solution*.go`、`0003_solutions.sql` | 已实现；Web 写入复用 daemon 事务与审计记录 |
-| 记录解法是否有效 | `errkb feedback`、MCP `err_feedback` | `internal/database/solution.go`、`errkb_trust()` | 已实现 |
-| 查看问题与统计 | CLI `show`、`list`、`stats`；Web 详情/统计/审计页 | `cmd/errkb/cli.go`、`internal/service/edit_api.go`、`internal/audit/`、`internal/ui/`、`internal/webshell/` | 已实现并有自动化测试覆盖 |
-| 为本地客户端提供服务 | `errkb daemon` + Named Pipe | `internal/service/daemon.go`、`pipe.go`、`api.go` | 已实现 |
-| 让 LLM 主动查询知识库 | `errkb mcp` 的 9 个工具 | `internal/mcp/` | 已实现；MCP 不是被动采集器 |
-| 诊断安装和连接器 | `errkb doctor` | `cmd/errkb/doctor.go`、`internal/service/doctor.go` | 已实现 |
-| 应用并检查数据库迁移 | `errkb db migrate`、`errkb db status` | `cmd/errkb/db.go`、`internal/database/migrate.go` | 当前源码已实现 |
-| 打开本地工具箱窗口 | `errkb ui`、`errkb ui --web` | `internal/ui/`、`internal/webshell/`、`cmd/errkb/web.go` | 内嵌 Web 壳已随 v0.1.1 发布（`errkb ui --web`） |
-| 安装和管理本地 PostgreSQL | PostgreSQL 管理器与便携脚本 | `internal/service/pg_manage.go`、`packaging/windows/postgres.ps1` | 已实现；`errkb pg install` 创建实例，`autostart.ps1` 在登录时恢复 |
-| 安全保留与删除数据 | 保留期/定向删除函数和设置模型 | `0006_retention.sql`、`internal/ui/settings.go` | 已实现，包含 Web 预览/确认；自动定时执行不属于 v1 |
+| 用户功能                  | 使用入口                                                           | 主要实现                                                                                                                             | 当前状态                                                          |
+| ------------------------- | ------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------ | ----------------------------------------------------------------- |
+| 采集失败的 CLI 命令       | `errkb run -- <command>`                                           | `cmd/errkb/run.go`、`internal/capture/run.go`                                                                                        | 已实现并通过端到端测试                                            |
+| 采集宿主或工具失败        | DSH Hook、Claude Hook 配置、连接器 SDK                             | `src/plugin.ts`、`src/connector.ts`、`internal/capture/connector.go`、`connectors/`                                                  | 已实现；支持范围以实测矩阵为准                                    |
+| 采集普通日志              | Tailer 组件和连接器模板                                            | `internal/capture/tail.go`、`connectors/templates/cli-log/`                                                                          | 组件已实现；通用宿主实机验收未完整完成                            |
+| 入库前删除敏感信息        | 所有采集与记录路径                                                 | `spec/redact.cue`、`internal/redact/`、`src/redact.ts`                                                                               | 已实现并通过语料测试                                              |
+| 对技术失败分类            | 采集流水线                                                         | `internal/core/classify.go`、`src/capture.ts`                                                                                        | 已实现，范围限于可观察技术错误                                    |
+| 合并重复失败              | 按项目和指纹记录事件                                               | `internal/core/fingerprint.go`、`db/migrations/0002_record.sql`                                                                      | 已实现                                                            |
+| 搜索已知错误              | CLI、MCP、原生搜索框、Web 搜索                                     | `internal/database/search.go`、`candidates.go`、`rerank.go`                                                                          | CLI/MCP 与 Web 工具箱均已实现                                     |
+| 记录并版本化解法          | MCP `err_record_solution`、服务/数据库 API、Web 详情编辑器         | `internal/database/solution*.go`、`0003_solutions.sql`                                                                               | 已实现；Web 写入复用 daemon 事务与审计记录                        |
+| 记录解法是否有效          | `errkb feedback`、MCP `err_feedback`                               | `internal/database/solution.go`、`errkb_trust()`                                                                                     | 已实现                                                            |
+| 查看问题与统计            | CLI `show`、`list`、`stats`；Web 详情/统计/审计页                  | `cmd/errkb/cli.go`、`internal/service/edit_api.go`、`internal/audit/`、`internal/ui/`、`internal/webshell/`                          | 已实现并有自动化测试覆盖                                          |
+| 为本地客户端提供服务      | `errkb daemon` + Named Pipe                                        | `internal/service/daemon.go`、`pipe.go`、`api.go`                                                                                    | 已实现                                                            |
+| 让 LLM 主动查询知识库     | Unreleased 源码中 `errkb mcp` 的 12 个工具                         | `internal/mcp/`                                                                                                                      | 已实现；MCP 不是被动采集器                                        |
+| 登记、验证并观察预防产物  | 六个 `errkb prevention` 命令、三个读取/登记 MCP 工具、Web 只读统计 | `internal/service/prevention.go`、`internal/database/prevention.go`、`internal/mcp/prevention.go`、`internal/webshell/prevention.go` | Unreleased 源码已实现并通过本地测试；未包含在 v0.1.3              |
+| 诊断安装和连接器          | `errkb doctor`                                                     | `cmd/errkb/doctor.go`、`internal/service/doctor.go`                                                                                  | 已实现                                                            |
+| 应用并检查数据库迁移      | `errkb db migrate`、`errkb db status`                              | `cmd/errkb/db.go`、`internal/database/migrate.go`                                                                                    | 当前源码已实现                                                    |
+| 打开本地工具箱窗口        | `errkb ui`、`errkb ui --web`                                       | `internal/ui/`、`internal/webshell/`、`cmd/errkb/web.go`                                                                             | 内嵌 Web 壳已随 v0.1.1 发布（`errkb ui --web`）                   |
+| 安装和管理本地 PostgreSQL | PostgreSQL 管理器与便携脚本                                        | `internal/service/pg_manage.go`、`packaging/windows/postgres.ps1`                                                                    | 已实现；`errkb pg install` 创建实例，`autostart.ps1` 在登录时恢复 |
+| 安全保留与删除数据        | 保留期/定向删除函数和设置模型                                      | `0006_retention.sql`、`internal/ui/settings.go`                                                                                      | 已实现，包含 Web 预览/确认；自动定时执行不属于 v1                 |
 
 ## 4. 错误采集
 
@@ -125,18 +126,20 @@ sha256(category + "\0" + normalized_message)[:12]
 
 PostgreSQL 是目标系统的唯一事实来源：
 
-| 实体 | 含义 |
-| --- | --- |
-| `connectors`、`sessions` | 错误来自哪个宿主和会话 |
-| `events` | 不可变、已脱敏的失败观测 |
-| `issues` | 项目 + 指纹对应的可复用问题身份 |
-| `occurrences` | 问题每次重复出现的时间和环境 |
-| `solutions`、`solution_versions` | 解法生命周期和追加式正文历史 |
-| `outcomes` | 某个解法版本在某种环境中是否有效 |
-| `retrievals` | 查了什么、返回什么、为何匹配、耗时多久 |
-| `notices` | 实际展示过的已知解法通知 |
-| `audit_log` | 管理与纠错操作 |
-| `schema_migrations` | 已应用迁移及校验和 |
+| 实体                                                   | 含义                                                                       |
+| ------------------------------------------------------ | -------------------------------------------------------------------------- |
+| `connectors`、`sessions`                               | 错误来自哪个宿主和会话                                                     |
+| `events`                                               | 不可变、已脱敏的失败观测                                                   |
+| `issues`                                               | 项目 + 指纹对应的可复用问题身份                                            |
+| `occurrences`                                          | 问题每次重复出现的时间和环境                                               |
+| `solutions`、`solution_versions`                       | 解法生命周期和追加式正文历史                                               |
+| `outcomes`                                             | 某个解法版本在某种环境中是否有效                                           |
+| `retrievals`                                           | 查了什么、返回什么、为何匹配、耗时多久                                     |
+| `notices`                                              | 实际展示过的已知解法通知                                                   |
+| `audit_log`                                            | 管理与纠错操作                                                             |
+| `prevention_artifacts`、`prevention_artifact_versions` | Unreleased 预防身份、仓库相对路径、不可变内容哈希、生命周期与 Git 激活证据 |
+| `issue_preventions`、`prevention_verifications`        | 同项目 issue 关联与追加式脱敏命令结果                                      |
+| `schema_migrations`                                    | 已应用迁移及校验和                                                         |
 
 `internal/database/migrate.go` 在 advisory lock 下逐个事务应用 SQL 迁移。校验和账本阻止已经执行过的迁移被悄悄改写。
 
@@ -165,11 +168,35 @@ trust = (successes + 2) / (successes + failures + 4)
 
 `unknown` 不改变分数。结果带环境，因此界面可以在操作系统、shell、连接器或运行时不同的时候显示适用性警告。
 
+### 8.1 预防闭环（Unreleased）
+
+四种预防类型为 `regression_test`、`deterministic_check`、`agent_instruction`
+和 `intent`。登记要求已解决 issue，并创建或关联不可变的内容哈希版本。
+激活前要求最新验证针对相同哈希通过，还要求产物干净且已跟踪于 Git
+`HEAD`。替代版本会弃用旧 active 版本但保留历史；复发不会自动改写状态。
+
+```text
+cmd/errkb/prevention.go
+  → service.HashPreventionArtifact（add / verify / activate）
+  → service.Client / Named Pipe / API.Handle
+  → service.SQLBackend.Prevention*
+  → database.RegisterPrevention / RecordPreventionVerification /
+    ActivatePrevention / ListPreventions / GetPrevention / PreventionStats
+  → 0009 迁移的表、约束、索引和 audit_log
+```
+
+验证使用 `capture.Run`，stdin 为空、截止时间为 120 秒、输出有界，并在
+运行前后检查产物哈希。只有 CLI 提供 verify/activate。MCP
+`err_prevention_register/list/get` 复用同一后端，但 register 接收元数据和
+调用方哈希，不读取文件。Web 只通过 `client.PreventionStats` 暴露
+`GET /api/preventions/stats`。指标由 `database.PreventionStats` 的 SQL 聚合
+基于真实 occurrence 计算。完整工作流见 [prevention.zh-CN.md](prevention.zh-CN.md)。
+
 ## 9. 对外入口
 
 ### 9.1 CLI
 
-CLI 是同一套契约上的薄客户端，包括 `search`、`show`、`record`、`list`、`feedback`、`stats`、`run`、`db`、`daemon`、`doctor`、`mcp`、`ui` 和 `version`。人类可读输出与 `--json` 共用同一份已校验响应。
+CLI 是同一套契约上的薄客户端，包括 `search`、`show`、`record`、`list`、`feedback`、`stats`、`prevention`、`run`、`db`、`daemon`、`doctor`、`mcp`、`ui` 和 `version`。人类可读输出与 `--json` 共用同一份已校验响应。
 
 ### 9.2 Daemon 与本地 API
 
@@ -177,18 +204,22 @@ CLI 是同一套契约上的薄客户端，包括 `search`、`show`、`record`�
 
 ### 9.3 MCP
 
-`errkb mcp` 通过 stdio 提供 9 个工具：
+Unreleased 源码中的 `errkb mcp` 通过 stdio 提供 12 个工具；v0.1.3 提供前 9 个：
 
-| 工具 | 作用 |
-| --- | --- |
-| `err_lookup` | 按 issue、错误码、指纹或规范化文本进行偏精确查询 |
-| `err_search` | 自由文本检索，明确标记近似候选 |
-| `err_record` | 显式提交一条已经脱敏的事件 |
-| `err_feedback` | 记录解法是否有效 |
-| `err_list` | 列出问题或解法 |
-| `err_stats` | 读取总量、延迟和节省估算 |
-| `err_record_solution` | 为已知问题新增并验证解法 |
-| `err_set_status` | 纠正问题状态 |
+| 工具                      | 作用                                                 |
+| ------------------------- | ---------------------------------------------------- |
+| `err_lookup`              | 按 issue、错误码、指纹或规范化文本进行偏精确查询     |
+| `err_search`              | 自由文本检索，明确标记近似候选                       |
+| `err_get_issue`           | 读取单个问题及其出现记录、解法和版本                 |
+| `err_record`              | 显式提交一条已经脱敏的事件                           |
+| `err_feedback`            | 记录解法是否有效                                     |
+| `err_list`                | 列出问题或解法                                       |
+| `err_stats`               | 读取总量、延迟和节省估算                             |
+| `err_record_solution`     | 为已知问题新增并验证解法                             |
+| `err_set_status`          | 纠正问题状态                                         |
+| `err_prevention_register` | 登记预防元数据和调用方提供的内容哈希，不读取产物文件 |
+| `err_prevention_list`     | 列出预防产物及其当前生命周期状态                     |
+| `err_prevention_get`      | 读取一个预防产物及其版本、关联和验证历史             |
 
 MCP 层调用 daemon 后端并重新校验返回值，不直接连接 PostgreSQL，也不会被动监视宿主。
 
@@ -196,14 +227,14 @@ MCP 层调用 daemon 后端并重新校验返回值，不直接连接 PostgreSQL
 
 `internal/ui/` 包含经过测试的托盘、搜索框、问题详情、解法编辑、统计和设置状态模型；`internal/webshell/` 通过内嵌浏览器界面呈现这些能力。
 
-本地 `errkb ui --web` 会嵌入静态资源，只绑定 `127.0.0.1`，每次启动生成随机令牌，并设置严格安全响应头。搜索、问题详情与编辑、统计、审计、设置、保留策略及删除预览/确认均已接到现有 daemon 服务，见 [toolbox-ui.zh-CN.md](toolbox-ui.zh-CN.md)。
+本地 `errkb ui --web` 会嵌入静态资源，只绑定 `127.0.0.1`，每次启动生成随机令牌，并设置严格安全响应头。搜索、问题详情与编辑、统计、审计、设置、保留策略及删除预览/确认均已接到现有 daemon 服务。Unreleased 源码还展示只读的预防统计；预防登记、验证、激活和 issue 关联仍由 CLI/MCP 操作。详见 [toolbox-ui.zh-CN.md](toolbox-ui.zh-CN.md)。
 
 ## 10. 运维、隐私与恢复
 
 - `errkb doctor` 对配置、数据库/schema、隐私模式、队列健康和连接器能力执行只读检查。
-- `errkb db migrate/status` 可以在不启动 daemon 的情况下应用迁移或比对账本。
-- PostgreSQL 生命周期代码可以发现二进制、创建或接管本地实例、生成凭据、启停、备份、升级和卸载（`internal/service/pg_manage.go`）。
-- 保留策略分别控制样本、规范化事件和审计记录；定向删除支持预览、确认和审计（`0006_retention.sql`）。
+- `errkb db migrate/status` 可以在不启动 daemon 的情况下应用迁移或比对账本。Unreleased 源码新增 `0009_prevention.sql`；升级、回滚和未来账本拒绝均使用真实 PostgreSQL 测试。
+- PostgreSQL 生命周期代码可以发现二进制、创建或接管本地实例、生成凭据、启停、备份、升级和卸载（`internal/service/pg_manage.go`）。便携备份/恢复覆盖全部四张预防表及其不可变版本、issue 关联和验证结果。
+- 保留策略分别控制样本、规范化事件和审计记录；定向删除支持预览、确认和审计（`0006_retention.sql`），包括预防产物与跨 issue 关联；保留任务会保留 active 产物及预防指标使用的剩余 occurrence 证据。
 - 崩溃测试会真实终止写入与迁移进程，再验证已提交数据完整性。
 
 Windows 冒烟任务会构建发布二进制并用真实 PostgreSQL 跑全套测试；`release.ps1` 于 2026-10-25 生成并核对便携 `v0.1.3` 发布包，安装器路线已移除。
@@ -216,6 +247,8 @@ Windows 冒烟任务会构建发布二进制并用真实 PostgreSQL 跑全套测
 - 可靠判断模型是否误解需求或产生幻觉；
 - 通过截图或 OCR 监视所有桌面程序；
 - 自动执行检索到的修复；
+- 自动生成回归测试、编辑预防产物文件或写入 Git；
+- 调用模型或外部服务来做出预防决策；
 - 上传知识库或提供团队/云同步；
 - 使用 embedding 或向量检索。
 

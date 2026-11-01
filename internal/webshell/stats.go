@@ -84,14 +84,18 @@ type deletionView struct {
 }
 
 type deleteCountsView struct {
-	Issues           int64 `json:"issues"`
-	Solutions        int64 `json:"solutions"`
-	SolutionVersions int64 `json:"solution_versions"`
-	Outcomes         int64 `json:"outcomes"`
-	Retrievals       int64 `json:"retrievals"`
-	Notices          int64 `json:"notices"`
-	Occurrences      int64 `json:"occurrences"`
-	Events           int64 `json:"events"`
+	Issues                     int64 `json:"issues"`
+	Solutions                  int64 `json:"solutions"`
+	SolutionVersions           int64 `json:"solution_versions"`
+	Outcomes                   int64 `json:"outcomes"`
+	Retrievals                 int64 `json:"retrievals"`
+	Notices                    int64 `json:"notices"`
+	Occurrences                int64 `json:"occurrences"`
+	Events                     int64 `json:"events"`
+	PreventionArtifacts        int64 `json:"prevention_artifacts"`
+	PreventionArtifactVersions int64 `json:"prevention_artifact_versions"`
+	IssuePreventions           int64 `json:"issue_preventions"`
+	PreventionVerifications    int64 `json:"prevention_verifications"`
 }
 
 func countsView(counts database.DeleteCounts) deleteCountsView {
@@ -100,6 +104,10 @@ func countsView(counts database.DeleteCounts) deleteCountsView {
 		SolutionVersions: counts.SolutionVersions, Outcomes: counts.Outcomes,
 		Retrievals: counts.Retrievals, Notices: counts.Notices,
 		Occurrences: counts.Occurrences, Events: counts.Events,
+		PreventionArtifacts:        counts.PreventionArtifacts,
+		PreventionArtifactVersions: counts.PreventionArtifactVersions,
+		IssuePreventions:           counts.IssuePreventions,
+		PreventionVerifications:    counts.PreventionVerifications,
 	}
 }
 

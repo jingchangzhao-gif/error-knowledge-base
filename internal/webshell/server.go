@@ -36,6 +36,7 @@ type Server struct {
 	search            SearchFunc
 	detail            GetIssueFunc
 	preventions       PreventionListFunc
+	preventionStats   PreventionStatsFunc
 	record            RecordSolutionFunc
 	setStatus         SetStatusFunc
 	setSolutionStatus SetSolutionStatusFunc
@@ -98,6 +99,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("POST /api/search", s.serveSearch)
 	mux.HandleFunc("GET /api/issues/{id}", s.serveIssue)
 	mux.HandleFunc("GET /api/issues/{id}/preventions", s.servePreventions)
+	mux.HandleFunc("GET /api/preventions/stats", s.servePreventionStats)
 	mux.HandleFunc("GET /issues/{id}", s.servePage)
 	mux.HandleFunc("GET /stats", s.servePage)
 	mux.HandleFunc("GET /settings", s.servePage)
